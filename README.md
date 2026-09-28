@@ -2,6 +2,8 @@
 
 Next.js + Tailwind + SQLite app built from the Claude Design handoff in `project/` (see below).
 
+Requires **Node 22 or 24 LTS** (`.nvmrc` pins 22). Odd-numbered releases such as Node 23 aren't supported: the SQLite driver has no prebuilt binary for them and would need Xcode tools to compile.
+
 ```bash
 npm install
 npm run dev        # http://localhost:3000
