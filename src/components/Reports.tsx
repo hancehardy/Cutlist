@@ -196,6 +196,7 @@ export function InstallSheet({ r, f, job, today, footerTxt }: ReportCtx) {
       </svg>
       <div className="mt-3.5 flex flex-col gap-1.5 text-[13px] leading-[1.6] text-ink-2">
         <div><strong>Construction.</strong> {r.d.caseMat} case &amp; slab fronts. {r.d.backMat} unfinished back. Toe kick is a separate assembly where called.</div>
+        <div><strong>Wall cabinets.</strong> Hung with top at {f(r.d.wallTop)}&quot; above finished floor.</div>
         <div><strong>Drawers.</strong> {r.d.drawerStyle}, {r.d.glideSeries} glides sized to depth. {r.d.pull}.</div>
         <div><strong>Grain on every part.</strong> Ends, back, stretchers, nailers and fronts = VERTICAL. Decks, tops and shelves = HORIZONTAL. Each front nested as its own part. Kerf {r.d.kerf}&quot;.</div>
         <div className="text-muted">Rectangular nest only. Confirm parts, banding, and nest with mill before cutting.</div>

@@ -64,7 +64,8 @@ describe('configurator layouts', () => {
     const job = buildJob([{ id: 1, type: 'BD', w: '24', h: '34.5', d: '24', toe: '4.5', qty: '2',
       layout: [newSection('door', '', { rollouts: 2 })] }], {});
     expect(job.drawers.find(d => d.kind === 'Roll-out')?.qty).toBe(4);
-    expect(job.hardware.find(h => h.item === 'Roll-out Spacer')?.qty).toBe(8);
+    // Single door: one spacer per roll-out, on the hinge side (2 roll-outs x 2 cabinets).
+    expect(job.hardware.find(h => h.item === 'Roll-out Spacer')?.qty).toBe(4);
   });
 
   it('warns when fixed faces do not fill the opening', () => {
@@ -77,6 +78,43 @@ describe('configurator layouts', () => {
     const job = buildJob([{ id: 1, type: 'B', w: '', h: '34.5', d: '24', toe: '4.5', qty: '1' }], {});
     expect(job.cabs[0].bad).toBe(true);
     expect(job.summary.nParts).toBe(0);
+  });
+});
+
+describe('shop rules', () => {
+  const rollW = (type: string, w: string, layout: ReturnType<typeof newSection>[]) =>
+    buildJob([{ id: 1, type, w, h: '34.5', d: '24', toe: '4.5', qty: '1', layout }], {}).drawers.find(d => d.kind === 'Roll-out');
+
+  it('roll-outs deduct 1" behind a single door, on the hinge side', () => {
+    // inside 22 1/2 - 1 spacer - 7/16 slide clearance
+    expect(fmt(rollW('BD', '24', [newSection('door', '', { rollouts: 1 })])!.w)).toBe('21 1/16');
+    expect(fmt(rollW('BD', '24', [newSection('door', '', { rollouts: 1, hinge: 'R' })])!.w)).toBe('21 1/16');
+  });
+
+  it('roll-outs deduct 2" behind a pair of doors', () => {
+    const job = buildJob([{ id: 1, type: 'BD', w: '30', h: '34.5', d: '24', toe: '4.5', qty: '1', layout: [newSection('door', '', { rollouts: 2 })] }], {});
+    expect(fmt(job.drawers[0].w)).toBe('26 1/16');
+    expect(job.hardware.find(h => h.item === 'Roll-out Spacer')?.qty).toBe(4);
+  });
+
+  it('open shelving roll-outs need no spacers', () => {
+    const job = buildJob([{ id: 1, type: 'WO', w: '30', h: '34.5', d: '24', toe: '4.5', qty: '1', layout: [newSection('open', '', { rollouts: 1 })] }], {});
+    expect(fmt(job.drawers[0].w)).toBe('28 1/16');
+    expect(job.hardware.find(h => h.item === 'Roll-out Spacer')).toBeUndefined();
+  });
+
+  it('fronts 13" and taller get a 10" box', () => {
+    const job = buildJob([{ id: 1, type: '2DB', w: '18', h: '34.5', d: '24', toe: '4.5', qty: '1' }], {});
+    expect(job.cabs[0].sections[0].h).toBeGreaterThan(13);
+    expect(job.drawers[0].h).toBe(10);
+  });
+
+  it('hangs wall cabinets at the wall top height (default 96")', () => {
+    const cabs = [{ id: 1, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' }];
+    const at = (raw: Record<string, string>) => { const i = buildJob(cabs, raw).install; return i.floorY - i.items[0].y; };
+    expect(at({})).toBe(96);
+    expect(at({ wallTop: '84' })).toBe(84);
+    expect(at({ wallTop: '102' })).toBe(102);
   });
 });
 
