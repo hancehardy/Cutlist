@@ -1,3 +1,20 @@
+# Cabinet Cutlist
+
+Next.js + Tailwind + SQLite app built from the Claude Design handoff in `project/` (see below).
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+npm test           # engine tests (numbers checked against the 3DB15 sample packet)
+npm run build && npm start
+```
+
+- **Data:** jobs autosave to SQLite at `data/cutlist.db` (override with `CUTLIST_DB=/path/file.db`). A new database is seeded with the 3DB15 sample job.
+- **Jobs menu** (next to the title): switch jobs, new / new from sample, import and export `.cutlist.json`, fraction or decimal dimensions, delete.
+- **Code map:** `src/lib/engine.ts` construction rules and report math · `src/lib/job.ts` job document + import validation · `src/lib/db.ts` SQLite · `src/app/api/jobs` REST API · `src/components` UI.
+
+---
+
 # CODING AGENTS: READ THIS FIRST
 
 This is a **handoff bundle** from Claude Design (claude.ai/design).
