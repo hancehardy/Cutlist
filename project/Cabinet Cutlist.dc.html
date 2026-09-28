@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>Cabinet Cutlist</title>
+<style>
+@font-face{font-family:"Mulish";font-style:normal;font-weight:200 1000;font-display:swap;src:url("https://fonts.gstatic.com/s/mulish/v13/1Ptyg83HX_SGhgqO0yLcmjzUAuWexZNRwaClGrw-PTY.woff2") format("woff2");}
+html,body{margin:0;padding:0;background:#F7F7F9;color:#0B0B0C;font-family:"Mulish",ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+a{color:#0078BD;text-decoration:none;} a:hover{color:#00A4FF;text-decoration:underline;}
+input,select,button{font-family:inherit;}
+@media print{ html,body{background:#fff;} [data-print-hide]{display:none !important;} [data-report]{break-after:page;box-shadow:none !important;border:none !important;} [data-shell]{display:block !important;padding:0 !important;} [data-reports]{max-width:none !important;} }
+</style>
+</helmet>
+
+<div data-shell="1" style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:20px;padding:20px;min-height:100vh;box-sizing:border-box;">
+
+  <!-- ============ INPUT PANEL ============ -->
+  <div data-print-hide="1" style="flex:1 1 440px;max-width:640px;min-width:0;display:flex;flex-direction:column;gap:16px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <img src="assets/logo-mark.png" alt="" style="width:34px;height:34px;object-fit:contain;">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.01em;">Cutlist</div>
+      <div style="margin-left:auto;font-size:12px;color:#6E6E78;letter-spacing:0.04em;">{{ today }}</div>
+    </div>
+
+    <!-- Job -->
+    <div style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px;">
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#6E6E78;">Job
+        <input value="{{ job.name }}" onChange="{{ onJobName }}" style="font-size:15px;font-weight:600;letter-spacing:0;text-transform:none;color:#0B0B0C;padding:8px 10px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#6E6E78;">Client
+        <input value="{{ job.client }}" onChange="{{ onJobClient }}" style="font-size:15px;letter-spacing:0;text-transform:none;color:#0B0B0C;padding:8px 10px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#6E6E78;">Catalog
+        <input value="{{ job.catalog }}" onChange="{{ onJobCatalog }}" style="font-size:15px;letter-spacing:0;text-transform:none;color:#0B0B0C;padding:8px 10px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#6E6E78;">Drawn by
+        <input value="{{ job.drawn }}" onChange="{{ onJobDrawn }}" style="font-size:15px;letter-spacing:0;text-transform:none;color:#0B0B0C;padding:8px 10px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+      </div>
+      <div style="border-top:1px solid #EFEFF2;padding-top:14px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#00A4FF;">Construction &amp; materials</div>
+          <div style="font-size:12px;color:#6E6E78;">Applies to every cabinet in this job</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 14px;">
+          <sc-for list="{{ textFields }}" as="f" hint-placeholder-count="3">
+            <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:#6E6E78;">{{ f.label }}
+              <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="font-size:13px;color:#0B0B0C;padding:6px 8px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button onClick="{{ toggleDefaults }}" style="border:none;background:none;padding:0;color:#0078BD;font-weight:700;font-size:13px;cursor:pointer;" style-hover="text-decoration:underline;">{{ defaultsBtn }}</button>
+          <button onClick="{{ resetDefaults }}" style="margin-left:auto;border:none;background:none;padding:0;color:#6E6E78;font-weight:600;font-size:13px;cursor:pointer;" style-hover="color:#0B0B0C;text-decoration:underline;">Reset to shop standard</button>
+        </div>
+        <sc-if value="{{ showDefaults }}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px 14px;">
+          <sc-for list="{{ numFields }}" as="f" hint-placeholder-count="4">
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:#2C2C32;">{{ f.label }}
+              <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:64px;font-size:13px;padding:6px 8px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;text-align:center;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+          </sc-for>
+        </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <!-- Cabinets -->
+    <div style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;align-items:baseline;gap:10px;">
+        <div style="font-size:16px;font-weight:700;">Cabinets</div>
+        <div style="font-size:13px;color:#6E6E78;">Sizes in inches — type 14 7/8 or 14.875</div>
+      </div>
+      <div style="display:grid;grid-template-columns:28px minmax(84px,0.9fr) minmax(120px,1.5fr) repeat(4,minmax(58px,1fr)) 46px 28px;gap:6px;align-items:center;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#6E6E78;padding:0 2px;">
+        <div>#</div><div>Type</div><div>Configuration</div><div>Width</div><div>Height</div><div>Depth</div><div>Toe</div><div>Qty</div><div></div>
+      </div>
+      <sc-for list="{{ cabs }}" as="cab" hint-placeholder-count="1">
+        <div style="display:grid;grid-template-columns:28px minmax(84px,0.9fr) minmax(120px,1.5fr) repeat(4,minmax(58px,1fr)) 46px 28px;gap:6px;align-items:center;padding:6px;margin:0 -6px;border-radius:8px;background:{{ cab.rowBg }};">
+          <div style="font-size:13px;font-weight:700;color:#6E6E78;">{{ cab.n }}</div>
+          <select value="{{ cab.cat }}" onChange="{{ cab.onCat }}" style="font-size:14px;padding:8px 6px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;color:#0B0B0C;outline:none;min-width:0;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);">
+            <sc-for list="{{ catList }}" as="t" hint-placeholder-count="1"><option value="{{ t.key }}">{{ t.label }}</option></sc-for>
+          </select>
+          <button onClick="{{ cab.togglePick }}" style="display:flex;align-items:center;gap:8px;min-width:0;height:36px;padding:2px 8px 2px 3px;border:1px solid {{ cab.pickBorder }};border-radius:6px;background:#fff;color:#0B0B0C;cursor:pointer;text-align:left;" style-hover="border-color:#0B0B0C;">
+            <img src="{{ cab.img }}" alt="" style="width:28px;height:30px;object-fit:contain;flex:none;">
+            <div style="flex:1;min-width:0;font-size:13px;font-weight:600;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ cab.cfgLabel }}</div>
+            <div style="flex:none;font-size:10px;color:#6E6E78;">▾</div>
+          </button>
+          <input value="{{ cab.w }}" onChange="{{ cab.onW }}" onBlur="{{ cab.blurW }}" style="font-size:14px;padding:8px 8px;border:1px solid {{ cab.wBorder }};border-radius:6px;background:#fff;outline:none;min-width:0;text-align:center;font-variant-numeric:tabular-nums;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);">
+          <input value="{{ cab.h }}" onChange="{{ cab.onH }}" onBlur="{{ cab.blurH }}" style="font-size:14px;padding:8px 8px;border:1px solid {{ cab.hBorder }};border-radius:6px;background:#fff;outline:none;min-width:0;text-align:center;font-variant-numeric:tabular-nums;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);">
+          <input value="{{ cab.d }}" onChange="{{ cab.onD }}" onBlur="{{ cab.blurD }}" style="font-size:14px;padding:8px 8px;border:1px solid {{ cab.dBorder }};border-radius:6px;background:#fff;outline:none;min-width:0;text-align:center;font-variant-numeric:tabular-nums;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);">
+          <input value="{{ cab.toe }}" onChange="{{ cab.onToe }}" onBlur="{{ cab.blurToe }}" style="font-size:14px;padding:8px 8px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;min-width:0;text-align:center;font-variant-numeric:tabular-nums;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);">
+          <input value="{{ cab.qty }}" onChange="{{ cab.onQty }}" style="font-size:14px;padding:8px 6px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;min-width:0;text-align:center;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);">
+          <button onClick="{{ cab.remove }}" title="Remove" style="width:28px;height:32px;border:none;background:none;color:#9A9AA3;font-size:18px;cursor:pointer;border-radius:6px;" style-hover="color:#D14343;background:#F7F7F9;">×</button>
+          <sc-if value="{{ cab.picking }}" hint-placeholder-val="{{ false }}">
+            <div style="grid-column:1 / -1;background:#F7F7F9;border:1px solid #E2E2E6;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+              <div style="font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#00A4FF;">{{ cab.pickTitle }}</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px;">
+                <sc-for list="{{ cab.configs }}" as="t" hint-placeholder-count="4">
+                  <button onClick="{{ t.onPick }}" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px 8px;border:{{ t.border }};border-radius:8px;background:{{ t.bg }};cursor:pointer;color:#0B0B0C;" style-hover="border-color:#0B0B0C;box-shadow:0 1px 2px rgba(11,11,12,0.08),0 4px 12px rgba(11,11,12,0.06);">
+                    <img src="{{ t.img }}" alt="" style="width:100%;height:84px;object-fit:contain;display:block;">
+                    <div style="font-size:12px;font-weight:700;line-height:1.25;text-align:center;text-wrap:pretty;">{{ t.label }}</div>
+                    <div style="font-size:11px;font-weight:600;color:#6E6E78;">{{ t.key }}</div>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <div style="grid-column:2 / -1;display:flex;align-items:flex-start;gap:10px;margin-top:-2px;">
+            <div style="flex:1;min-width:0;font-size:12px;color:#6E6E78;text-wrap:pretty;">{{ cab.code }} — {{ cab.sizeTxt }}{{ cab.frontsTxt }}</div>
+            <button onClick="{{ cab.configure }}" style="flex:none;padding:4px 10px;border:1px solid #C2C2C9;border-radius:999px;background:#fff;color:#0B0B0C;font-weight:700;font-size:12px;cursor:pointer;" style-hover="border-color:#0B0B0C;">Configure</button>
+          </div>
+        </div>
+      </sc-for>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onClick="{{ addCab }}" style="padding:9px 16px;border:1px solid #0B0B0C;border-radius:999px;background:#0B0B0C;color:#fff;font-weight:700;font-size:14px;cursor:pointer;" style-hover="background:#2C2C32;">Add cabinet</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ REPORTS ============ -->
+  <div data-reports="1" style="flex:2 1 520px;min-width:0;display:flex;flex-direction:column;gap:14px;">
+    <div data-print-hide="1" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="7">
+        <button onClick="{{ t.onClick }}" style="padding:8px 12px;border:none;border-bottom:2px solid {{ t.line }};background:none;color:{{ t.color }};font-weight:700;font-size:14px;cursor:pointer;" style-hover="color:#0B0B0C;">{{ t.label }}</button>
+      </sc-for>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+        <div style="font-size:13px;color:#6E6E78;">{{ summaryTxt }}</div>
+        <button onClick="{{ printAll }}" style="padding:9px 16px;border:none;border-radius:999px;background:#00A4FF;color:#fff;font-weight:700;font-size:14px;cursor:pointer;" style-hover="background:#008FE0;">Print packet</button>
+      </div>
+    </div>
+
+    <!-- Configurator -->
+    <sc-if value="{{ show.config }}" hint-placeholder-val="{{ true }}">
+      <div data-print-hide="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;display:flex;flex-direction:column;gap:18px;">
+        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:12px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#00A4FF;">{{ cfg.eyebrow }}</div>
+            <div style="font-size:24px;font-weight:800;letter-spacing:-0.01em;">{{ cfg.title }}</div>
+            <div style="font-size:14px;color:#4A4A52;">{{ cfg.subTxt }}</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button onClick="{{ cfg.prev }}" style="padding:8px 14px;border:1px solid #C2C2C9;border-radius:8px;background:#fff;color:#0B0B0C;font-weight:700;font-size:13px;cursor:pointer;" style-hover="border-color:#0B0B0C;">‹ Prev</button>
+            <button onClick="{{ cfg.next }}" style="padding:8px 14px;border:1px solid #C2C2C9;border-radius:8px;background:#fff;color:#0B0B0C;font-weight:700;font-size:13px;cursor:pointer;" style-hover="border-color:#0B0B0C;">Next ›</button>
+          </div>
+        </div>
+        <sc-if value="{{ cfg.empty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:40px 16px;text-align:center;font-size:15px;color:#6E6E78;background:#F7F7F9;border-radius:8px;">{{ cfg.emptyTxt }}</div>
+        </sc-if>
+        <sc-if value="{{ cfg.ready }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:28px;align-items:start;">
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <svg viewBox="{{ cfg.vb }}" style="width:100%;max-height:560px;display:block;">
+                <rect x="0" y="0" width="{{ cfg.W }}" height="{{ cfg.boxH }}" fill="#F7F7F9" stroke="#0B0B0C" stroke-width="{{ cfg.sw }}"></rect>
+                <rect x="0" y="{{ cfg.boxH }}" width="{{ cfg.W }}" height="{{ cfg.toe }}" fill="#E2E2E6" stroke="#0B0B0C" stroke-width="{{ cfg.sw2 }}"></rect>
+                <sc-for list="{{ cfg.faces }}" as="f" hint-placeholder-count="3">
+                  <rect x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}" fill="{{ f.fill }}" stroke="{{ f.stroke }}" stroke-width="{{ f.sw }}" stroke-dasharray="{{ f.dash }}" onClick="{{ f.onClick }}" style="cursor:pointer;"></rect>
+                  <polyline points="{{ f.swing }}" fill="none" stroke="#9A9AA3" stroke-width="{{ cfg.sw2 }}" stroke-dasharray="{{ cfg.dash }}" style="pointer-events:none;"></polyline>
+                  <line x1="{{ f.px1 }}" y1="{{ f.py1 }}" x2="{{ f.px2 }}" y2="{{ f.py2 }}" stroke="{{ f.pullStroke }}" stroke-width="{{ cfg.pullW }}" stroke-linecap="round" style="pointer-events:none;"></line>
+                </sc-for>
+                <sc-for list="{{ cfg.shelfLines }}" as="l" hint-placeholder-count="0">
+                  <line x1="{{ l.x1 }}" y1="{{ l.y }}" x2="{{ l.x2 }}" y2="{{ l.y }}" stroke="#6E6E78" stroke-width="{{ cfg.sw2 }}" stroke-dasharray="{{ cfg.dash }}" style="pointer-events:none;"></line>
+                </sc-for>
+                <sc-for list="{{ cfg.rollRects }}" as="r" hint-placeholder-count="0">
+                  <rect x="{{ r.x }}" y="{{ r.y }}" width="{{ r.w }}" height="{{ r.h }}" fill="none" stroke="#0078BD" stroke-width="{{ cfg.sw2 }}" stroke-dasharray="{{ cfg.dash }}" style="pointer-events:none;"></rect>
+                </sc-for>
+                <sc-for list="{{ cfg.faces }}" as="f" hint-placeholder-count="3">
+                  <text x="{{ f.tx }}" y="{{ f.ty }}" text-anchor="middle" dominant-baseline="middle" font-size="{{ f.tfs }}" font-weight="700" fill="#0B0B0C" style="pointer-events:none;" children="{{ f.label }}"></text>
+                </sc-for>
+                <sc-for list="{{ cfg.dims }}" as="m" hint-placeholder-count="2">
+                  <line x1="{{ cfg.dimX }}" y1="{{ m.y1 }}" x2="{{ cfg.dimX }}" y2="{{ m.y2 }}" stroke="#6E6E78" stroke-width="{{ cfg.sw2 }}"></line>
+                  <line x1="{{ cfg.tickX1 }}" y1="{{ m.y1 }}" x2="{{ cfg.tickX2 }}" y2="{{ m.y1 }}" stroke="#6E6E78" stroke-width="{{ cfg.sw2 }}"></line>
+                  <line x1="{{ cfg.tickX1 }}" y1="{{ m.y2 }}" x2="{{ cfg.tickX2 }}" y2="{{ m.y2 }}" stroke="#6E6E78" stroke-width="{{ cfg.sw2 }}"></line>
+                  <text x="{{ cfg.dimTX }}" y="{{ m.ty }}" dominant-baseline="middle" font-size="{{ cfg.dimFs }}" font-weight="{{ m.weight }}" fill="{{ m.color }}" children="{{ m.txt }}"></text>
+                </sc-for>
+                <line x1="0" y1="{{ cfg.wDimY }}" x2="{{ cfg.W }}" y2="{{ cfg.wDimY }}" stroke="#6E6E78" stroke-width="{{ cfg.sw2 }}"></line>
+                <text x="{{ cfg.midX }}" y="{{ cfg.wTextY }}" text-anchor="middle" font-size="{{ cfg.dimFs }}" font-weight="700" fill="#0B0B0C" children="{{ cfg.wTxt }}"></text>
+                <line x1="{{ cfg.hDimX }}" y1="0" x2="{{ cfg.hDimX }}" y2="{{ cfg.H }}" stroke="#6E6E78" stroke-width="{{ cfg.sw2 }}"></line>
+                <text x="{{ cfg.hTextX }}" y="{{ cfg.midY }}" text-anchor="middle" font-size="{{ cfg.dimFs }}" font-weight="700" fill="#0B0B0C" transform="{{ cfg.rot }}" children="{{ cfg.hTxt }}"></text>
+              </svg>
+              <div style="display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:#6E6E78;">
+                <div>Click a face to edit it</div>
+                <div>Dashed grey = adjustable shelf</div>
+                <div style="color:#0078BD;">Dashed blue = roll-out</div>
+                <div>Swing lines point to hinge side</div>
+              </div>
+              <sc-if value="{{ cfg.hasBoxes }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13px;color:#2C2C32;line-height:1.6;"><strong>Boxes</strong> · {{ cfg.boxesTxt }}</div>
+              </sc-if>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+                <div style="font-size:16px;font-weight:700;">Faces</div>
+                <div style="font-size:13px;color:#6E6E78;">Top to bottom · blank height = auto</div>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:#6E6E78;">{{ cfg.statusTxt }}
+                  <button onClick="{{ cfg.reset }}" style="border:none;background:none;padding:0;color:#0078BD;font-weight:700;font-size:12px;cursor:pointer;" style-hover="text-decoration:underline;">Reset</button>
+                </div>
+              </div>
+              <sc-for list="{{ cfg.sections }}" as="s" hint-placeholder-count="3">
+                <div onClick="{{ s.select }}" style="border:1px solid {{ s.border }};background:{{ s.bg }};border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <div style="width:26px;height:26px;border-radius:6px;background:#0B0B0C;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;">{{ s.tag }}</div>
+                    <div style="display:flex;border:1px solid #C2C2C9;border-radius:8px;overflow:hidden;">
+                      <sc-for list="{{ s.kinds }}" as="k" hint-placeholder-count="4">
+                        <button onClick="{{ k.onClick }}" style="padding:6px 9px;border:none;background:{{ k.bg }};color:{{ k.color }};font-size:12px;font-weight:700;cursor:pointer;">{{ k.label }}</button>
+                      </sc-for>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6E6E78;">H
+                      <input value="{{ s.hVal }}" placeholder="{{ s.autoTxt }}" onChange="{{ s.onH }}" onBlur="{{ s.onHBlur }}" style="width:84px;font-size:13px;padding:6px 8px;border:1px solid #E2E2E6;border-radius:6px;background:#fff;outline:none;text-align:center;color:#0B0B0C;" style-focus="border-color:#00A4FF;box-shadow:0 0 0 3px rgba(0,164,255,0.25);"></label>
+                    <div style="margin-left:auto;display:flex;gap:2px;">
+                      <button onClick="{{ s.up }}" title="Move up" style="width:28px;height:28px;border:none;background:none;color:#6E6E78;font-size:14px;cursor:pointer;border-radius:6px;" style-hover="background:#EFEFF2;color:#0B0B0C;">↑</button>
+                      <button onClick="{{ s.down }}" title="Move down" style="width:28px;height:28px;border:none;background:none;color:#6E6E78;font-size:14px;cursor:pointer;border-radius:6px;" style-hover="background:#EFEFF2;color:#0B0B0C;">↓</button>
+                      <button onClick="{{ s.remove }}" title="Remove" style="width:28px;height:28px;border:none;background:none;color:#9A9AA3;font-size:17px;cursor:pointer;border-radius:6px;" style-hover="background:#EFEFF2;color:#D14343;">×</button>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px 16px;flex-wrap:wrap;align-items:center;font-size:12px;color:#4A4A52;">
+                    <sc-if value="{{ s.showSplit }}" hint-placeholder-val="{{ true }}">
+                      <div style="display:flex;align-items:center;gap:6px;">{{ s.splitLabel }}
+                        <div style="display:flex;align-items:center;border:1px solid #E2E2E6;border-radius:8px;background:#fff;">
+                          <button onClick="{{ s.splitDec }}" style="width:28px;height:28px;border:none;background:none;font-size:15px;cursor:pointer;color:#0B0B0C;border-radius:8px;" style-hover="background:#EFEFF2;">−</button>
+                          <div style="min-width:18px;text-align:center;font-weight:800;color:#0B0B0C;font-size:13px;">{{ s.split }}</div>
+                          <button onClick="{{ s.splitInc }}" style="width:28px;height:28px;border:none;background:none;font-size:15px;cursor:pointer;color:#0B0B0C;border-radius:8px;" style-hover="background:#EFEFF2;">+</button>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ s.showStore }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:6px;">Shelves
+                        <div style="display:flex;align-items:center;border:1px solid #E2E2E6;border-radius:8px;background:#fff;">
+                          <button onClick="{{ s.shelfDec }}" style="width:28px;height:28px;border:none;background:none;font-size:15px;cursor:pointer;color:#0B0B0C;border-radius:8px;" style-hover="background:#EFEFF2;">−</button>
+                          <div style="min-width:18px;text-align:center;font-weight:800;color:#0B0B0C;font-size:13px;">{{ s.shelves }}</div>
+                          <button onClick="{{ s.shelfInc }}" style="width:28px;height:28px;border:none;background:none;font-size:15px;cursor:pointer;color:#0B0B0C;border-radius:8px;" style-hover="background:#EFEFF2;">+</button>
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:6px;">Roll-outs
+                        <div style="display:flex;align-items:center;border:1px solid #E2E2E6;border-radius:8px;background:#fff;">
+                          <button onClick="{{ s.rollDec }}" style="width:28px;height:28px;border:none;background:none;font-size:15px;cursor:pointer;color:#0B0B0C;border-radius:8px;" style-hover="background:#EFEFF2;">−</button>
+                          <div style="min-width:18px;text-align:center;font-weight:800;color:#0B0B0C;font-size:13px;">{{ s.rollouts }}</div>
+                          <button onClick="{{ s.rollInc }}" style="width:28px;height:28px;border:none;background:none;font-size:15px;cursor:pointer;color:#0B0B0C;border-radius:8px;" style-hover="background:#EFEFF2;">+</button>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ s.showHinge }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:6px;">Hinge
+                        <div style="display:flex;border:1px solid #C2C2C9;border-radius:8px;overflow:hidden;">
+                          <sc-for list="{{ s.hinges }}" as="k" hint-placeholder-count="2">
+                            <button onClick="{{ k.onClick }}" style="padding:6px 9px;border:none;background:{{ k.bg }};color:{{ k.color }};font-size:12px;font-weight:700;cursor:pointer;">{{ k.label }}</button>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <div style="margin-left:auto;font-weight:700;color:#0B0B0C;font-variant-numeric:tabular-nums;">{{ s.sizeTxt }}</div>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ cfg.hasWarn }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13px;color:#B42318;background:#FEF3F2;border-radius:8px;padding:10px 12px;">{{ cfg.warn }}</div>
+              </sc-if>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                <div style="font-size:12px;font-weight:700;color:#6E6E78;">{{ cfg.addLabel }}</div>
+                <button onClick="{{ cfg.addDrawer }}" style="padding:7px 12px;border:1px solid #C2C2C9;border-radius:999px;background:#fff;color:#0B0B0C;font-weight:700;font-size:13px;cursor:pointer;" style-hover="border-color:#0B0B0C;">+ Drawer</button>
+                <button onClick="{{ cfg.addDoor }}" style="padding:7px 12px;border:1px solid #C2C2C9;border-radius:999px;background:#fff;color:#0B0B0C;font-weight:700;font-size:13px;cursor:pointer;" style-hover="border-color:#0B0B0C;">+ Door</button>
+                <button onClick="{{ cfg.addFalse }}" style="padding:7px 12px;border:1px solid #C2C2C9;border-radius:999px;background:#fff;color:#0B0B0C;font-weight:700;font-size:13px;cursor:pointer;" style-hover="border-color:#0B0B0C;">+ False front</button>
+                <button onClick="{{ cfg.addOpen }}" style="padding:7px 12px;border:1px solid #C2C2C9;border-radius:999px;background:#fff;color:#0B0B0C;font-weight:700;font-size:13px;cursor:pointer;" style-hover="border-color:#0B0B0C;">+ Open</button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- Panel stock cut list -->
+    <sc-if value="{{ show.cut }}" hint-placeholder-val="{{ true }}">
+      <sc-for list="{{ materials }}" as="m" hint-placeholder-count="2">
+        <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+            <div style="font-size:20px;font-weight:800;">Panel Stock Cut List</div>
+            <div style="font-size:12px;color:#6E6E78;">{{ headerTxt }}</div>
+          </div>
+          <div style="margin-top:14px;font-size:16px;font-weight:700;color:#0078BD;">{{ m.name }}</div>
+          <div style="font-size:12px;color:#6E6E78;margin-top:2px;">Grain called on every part. Vertical = along Length. Kerf {{ kerfTxt }}". Band blank — mill to confirm L/R/T/B.</div>
+          <div style="margin-top:12px;display:grid;grid-template-columns:44px minmax(120px,2fr) minmax(110px,1.4fr) minmax(90px,1.2fr) minmax(80px,1fr);gap:4px 10px;font-size:13px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Qty</div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Description</div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Width x Length</div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Grain</div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Cabinet (Qty)</div>
+            <sc-for list="{{ m.rows }}" as="r" hint-placeholder-count="4">
+              <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ r.qty }}</div>
+              <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;">{{ r.desc }}</div>
+              <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-variant-numeric:tabular-nums;font-weight:600;">{{ r.size }}</div>
+              <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ r.grainTxt }}</div>
+              <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ r.cabsTxt }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:#4A4A52;"><strong>Rip totals</strong> (linear ft of each width): {{ m.rips }}</div>
+          <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">{{ footerTxt }}</div>
+        </div>
+      </sc-for>
+    </sc-if>
+
+    <!-- Door list -->
+    <sc-if value="{{ show.doors }}" hint-placeholder-val="{{ false }}">
+      <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+          <div style="font-size:20px;font-weight:800;">Door List</div>
+          <div style="font-size:12px;color:#6E6E78;">{{ headerTxt }}</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:#4A4A52;">{{ doorStyleTxt }} · Outside edge: none · Panel: slab · Grain: vertical (along height)</div>
+        <div style="margin-top:12px;display:grid;grid-template-columns:44px minmax(120px,1.6fr) minmax(90px,1fr) minmax(90px,1fr) minmax(80px,1fr);gap:4px 10px;font-size:13px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Qty</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Width x Height</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Type</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Grain</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Cab (Qty)</div>
+          <sc-for list="{{ doors }}" as="r" hint-placeholder-count="3">
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ r.qty }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:600;font-variant-numeric:tabular-nums;">{{ r.size }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;">{{ r.typeTxt }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">Vertical (along L)</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ r.cabsTxt }}</div>
+          </sc-for>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#6E6E78;">DF = drawer front · DR = door · FF = false front. Front width = cabinet width − {{ sideRevealTxt }}.</div>
+        <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">{{ footerTxt }}</div>
+      </div>
+    </sc-if>
+
+    <!-- Drawer list -->
+    <sc-if value="{{ show.drawers }}" hint-placeholder-val="{{ false }}">
+      <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+          <div style="font-size:20px;font-weight:800;">Drawer List</div>
+          <div style="font-size:12px;color:#6E6E78;">{{ headerTxt }}</div>
+        </div>
+        <div style="margin-top:8px;font-size:16px;font-weight:700;color:#0078BD;">{{ drawerStyleTxt }}</div>
+        <div style="margin-top:12px;display:grid;grid-template-columns:44px minmax(70px,1fr) repeat(3,minmax(70px,1fr)) minmax(80px,1fr);gap:4px 10px;font-size:13px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Type</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Qty</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Width</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Depth</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Height</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Cabinet (Qty)</div>
+          <sc-for list="{{ drawers }}" as="r" hint-placeholder-count="2">
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;">{{ r.kind }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ r.qty }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:600;">{{ r.wTxt }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:600;">{{ r.dTxt }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:600;">{{ r.hTxt }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ r.cabsTxt }}</div>
+          </sc-for>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#6E6E78;">Box width = cabinet width − {{ boxDeductTxt }}. Depth = longest {{ glideSeriesTxt }} glide that fits cabinet depth − {{ glideDeductTxt }}.</div>
+        <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">{{ footerTxt }}</div>
+      </div>
+    </sc-if>
+
+    <!-- Assembly sheets -->
+    <sc-if value="{{ show.assembly }}" hint-placeholder-val="{{ false }}">
+      <sc-for list="{{ builtCabs }}" as="c" hint-placeholder-count="1">
+        <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+            <div style="font-size:20px;font-weight:800;">Assembly #{{ c.idx }} — {{ c.label }}</div>
+            <div style="font-size:12px;color:#6E6E78;">{{ job.name }} · {{ today }}</div>
+          </div>
+          <div style="margin-top:14px;display:grid;grid-template-columns:minmax(160px,220px) minmax(200px,1fr);gap:20px;align-items:start;">
+            <div>
+              <svg viewBox="{{ c.vb }}" style="width:100%;max-height:300px;display:block;">
+                <rect x="0" y="0" width="{{ c.W }}" height="{{ c.boxH }}" fill="#fff" stroke="#0B0B0C" stroke-width="0.25"></rect>
+                <sc-for list="{{ c.shapes }}" as="s" hint-placeholder-count="3">
+                  <rect x="{{ s.x }}" y="{{ s.y }}" width="{{ s.w }}" height="{{ s.h }}" fill="{{ s.fill }}" stroke="#0B0B0C" stroke-width="0.18"></rect>
+                  <text x="{{ s.tx }}" y="{{ s.ty }}" text-anchor="middle" dominant-baseline="middle" font-size="{{ c.fs }}" font-weight="700" fill="#0B0B0C" children="{{ s.txt }}"></text>
+                </sc-for>
+                <text x="{{ c.midX }}" y="{{ c.dimY }}" text-anchor="middle" font-size="{{ c.fs }}" fill="#6E6E78" children="{{ c.wTxt }}"></text>
+                <text x="{{ c.dimX }}" y="{{ c.midY }}" text-anchor="middle" font-size="{{ c.fs }}" fill="#6E6E78" transform="{{ c.rot }}" children="{{ c.hTxt }}"></text>
+              </svg>
+            </div>
+            <div style="font-size:13px;line-height:1.7;color:#2C2C32;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 16px;">
+              <div><span style="color:#6E6E78;">Code</span> <strong>{{ c.code }}</strong></div>
+              <div><span style="color:#6E6E78;">Size</span> <strong>{{ c.sizeTxt }}</strong></div>
+              <div><span style="color:#6E6E78;">Catalog</span> {{ job.catalog }}</div>
+              <div><span style="color:#6E6E78;">Qty</span> {{ c.qty }}</div>
+              <div><span style="color:#6E6E78;">Toe height</span> {{ c.toeTxt }}</div>
+              <div><span style="color:#6E6E78;">Toe recess</span> {{ toeRecessTxt }}</div>
+              <div><span style="color:#6E6E78;">Back / Ends</span> Unfinished</div>
+              <div><span style="color:#6E6E78;">Scribe / Stile</span> 0</div>
+              <div style="grid-column:1 / -1;color:#6E6E78;">{{ c.toeNote }}</div>
+            </div>
+          </div>
+          <div style="margin-top:16px;font-size:13px;font-weight:700;color:#0078BD;">Drawer Fronts / Doors</div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:40px 70px 70px minmax(120px,1.5fr) minmax(70px,0.8fr) minmax(100px,1fr);gap:2px 10px;font-size:13px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Qty</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">W</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">L</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Description</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Grain</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Material</div>
+            <sc-for list="{{ c.frontRows }}" as="p" hint-placeholder-count="3">
+              <div style="padding:4px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ p.qty }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.wTxt }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.lTxt }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.desc }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ p.grain }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ p.mat }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-top:16px;font-size:13px;font-weight:700;color:#0078BD;">Panel Stock</div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:40px 70px 70px minmax(120px,1.5fr) minmax(70px,0.8fr) minmax(100px,1fr);gap:2px 10px;font-size:13px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Qty</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">W</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">L</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Description</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Grain</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Material</div>
+            <sc-for list="{{ c.partRows }}" as="p" hint-placeholder-count="6">
+              <div style="padding:4px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ p.qty }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.wTxt }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.lTxt }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.desc }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ p.grain }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ p.mat }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-top:16px;font-size:13px;font-weight:700;color:#0078BD;">Hardware</div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:40px minmax(120px,1fr) minmax(140px,1.4fr);gap:2px 10px;font-size:13px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Qty</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Item</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Spec</div>
+            <sc-for list="{{ c.hardware }}" as="h" hint-placeholder-count="2">
+              <div style="padding:4px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ h.qty }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ h.item }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ h.spec }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">Assembly #{{ c.idx }} · {{ c.code }} · {{ c.sizeTxt }} · {{ job.name }}</div>
+        </div>
+      </sc-for>
+    </sc-if>
+
+    <!-- Nest -->
+    <sc-if value="{{ show.nest }}" hint-placeholder-val="{{ false }}">
+      <sc-for list="{{ nestSheets }}" as="s" hint-placeholder-count="1">
+        <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+            <div style="font-size:20px;font-weight:800;">{{ s.title }}</div>
+            <div style="font-size:12px;color:#6E6E78;">{{ headerTxt }}</div>
+          </div>
+          <svg viewBox="{{ s.vb }}" style="width:100%;display:block;margin-top:14px;border:1px solid #E2E2E6;background:#F7F7F9;">
+            <sc-for list="{{ s.parts }}" as="p" hint-placeholder-count="4">
+              <rect x="{{ p.sx }}" y="{{ p.sy }}" width="{{ p.sw }}" height="{{ p.sh }}" fill="#DDF0FF" stroke="#0B0B0C" stroke-width="0.12"></rect>
+              <text x="{{ p.tx }}" y="{{ p.ty }}" text-anchor="middle" dominant-baseline="middle" font-size="{{ p.fs }}" font-weight="700" fill="#0B0B0C" children="{{ p.label }}"></text>
+              <text x="{{ p.tx }}" y="{{ p.ty2 }}" text-anchor="middle" dominant-baseline="middle" font-size="{{ p.fs2 }}" fill="#4A4A52" children="{{ p.sub2 }}"></text>
+            </sc-for>
+          </svg>
+          <div style="margin-top:8px;font-size:12px;color:#6E6E78;">Sheet {{ s.L }} long x {{ s.W }} wide, kerf {{ kerfTxt }}", sheet grain along {{ s.L }}" length. → = part grain runs with sheet, ↕ = across. {{ s.yieldTxt }}. Unshaded = offcut.</div>
+          <div style="margin-top:12px;display:grid;grid-template-columns:36px minmax(140px,2fr) minmax(80px,1fr) minmax(80px,1fr) minmax(70px,0.8fr) 50px;gap:2px 10px;font-size:13px;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">#</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Name</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Along grain</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Across grain</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Grain</div><div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;border-bottom:1px solid #0B0B0C;padding-bottom:4px;">Cab#</div>
+            <sc-for list="{{ s.parts }}" as="p" hint-placeholder-count="4">
+              <div style="padding:4px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ p.id }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;">{{ p.name }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;font-weight:600;">{{ p.alongTxt }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;font-weight:600;">{{ p.acrossTxt }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ p.grain }}</div><div style="padding:4px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ p.cab }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">{{ footerTxt }}</div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ hasOversize }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:13px;color:#D14343;padding:0 4px;">{{ oversizeTxt }}</div>
+      </sc-if>
+    </sc-if>
+
+    <!-- Install sheet -->
+    <sc-if value="{{ show.install }}" hint-placeholder-val="{{ false }}">
+      <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+          <div style="font-size:20px;font-weight:800;">Install Sheet — {{ job.name }}</div>
+          <div style="font-size:12px;color:#6E6E78;">Drawn: {{ job.drawn }} · {{ today }}</div>
+        </div>
+        <svg viewBox="{{ install.viewBox }}" style="width:100%;display:block;margin-top:16px;">
+          <line x1="-2" y1="{{ install.floorY }}" x2="{{ install.floorX2 }}" y2="{{ install.floorY }}" stroke="#0B0B0C" stroke-width="0.4"></line>
+          <sc-for list="{{ install.items }}" as="c" hint-placeholder-count="1">
+            <rect x="{{ c.x }}" y="{{ c.y }}" width="{{ c.w }}" height="{{ c.h }}" fill="#fff" stroke="#0B0B0C" stroke-width="0.3"></rect>
+            <sc-for list="{{ c.shapes }}" as="s" hint-placeholder-count="2">
+              <rect x="{{ s.x }}" y="{{ s.y }}" width="{{ s.w }}" height="{{ s.h }}" fill="{{ s.fill }}" stroke="#0B0B0C" stroke-width="0.15"></rect>
+            </sc-for>
+            <rect x="{{ c.x }}" y="{{ c.toeY }}" width="{{ c.w }}" height="{{ c.toe }}" fill="#E2E2E6" stroke="#0B0B0C" stroke-width="0.15"></rect>
+            <text x="{{ c.tx }}" y="{{ c.tagY }}" text-anchor="middle" font-size="{{ install.labelSize }}" font-weight="800" fill="#0078BD" children="{{ c.tag }}"></text>
+            <text x="{{ c.tx }}" y="{{ c.dimY }}" text-anchor="middle" font-size="{{ install.labelSize }}" fill="#0B0B0C" children="{{ c.wTxt }}"></text>
+          </sc-for>
+          <text x="{{ install.midX }}" y="{{ install.totalY }}" text-anchor="middle" font-size="{{ install.labelSize }}" font-weight="700" fill="#0B0B0C" children="{{ install.totalTxt }}"></text>
+        </svg>
+        <div style="margin-top:14px;font-size:13px;line-height:1.6;color:#2C2C32;display:flex;flex-direction:column;gap:6px;">
+          <div><strong>Construction.</strong> {{ caseMatTxt }} case &amp; slab fronts. {{ backMatTxt }} unfinished back. Toe kick is a separate assembly where called.</div>
+          <div><strong>Drawers.</strong> {{ drawerStyleTxt }}, {{ glideSeriesTxt }} glides sized to depth. {{ pullTxt }}.</div>
+          <div><strong>Grain on every part.</strong> Ends, back, stretchers, nailers and fronts = VERTICAL. Decks, tops and shelves = HORIZONTAL. Each front nested as its own part. Kerf {{ kerfTxt }}".</div>
+          <div style="color:#6E6E78;">Rectangular nest only. Confirm parts, banding, and nest with mill before cutting.</div>
+        </div>
+        <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">{{ footerTxt }}</div>
+      </div>
+    </sc-if>
+
+    <!-- Hardware -->
+    <sc-if value="{{ show.hardware }}" hint-placeholder-val="{{ false }}">
+      <div data-report="1" style="background:#fff;border:1px solid #E2E2E6;border-radius:12px;padding:22px 24px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+          <div style="font-size:20px;font-weight:800;">Hardware List</div>
+          <div style="font-size:12px;color:#6E6E78;">{{ headerTxt }}</div>
+        </div>
+        <div style="margin-top:12px;display:grid;grid-template-columns:44px minmax(140px,1fr) minmax(160px,1.4fr);gap:4px 10px;font-size:13px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Qty</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Item</div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6E6E78;padding-bottom:6px;border-bottom:1px solid #0B0B0C;">Spec</div>
+          <sc-for list="{{ hardware }}" as="h" hint-placeholder-count="3">
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;font-weight:700;">{{ h.qty }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;">{{ h.item }}</div>
+            <div style="padding:6px 0;border-bottom:1px solid #EFEFF2;color:#4A4A52;">{{ h.spec }}</div>
+          </sc-for>
+        </div>
+        <div style="margin-top:14px;font-size:11px;color:#9A9AA3;">{{ footerTxt }}</div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;dimFormat&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;fraction&quot;,&quot;decimal&quot;],&quot;default&quot;:&quot;fraction&quot;,&quot;tsType&quot;:&quot;'fraction' | 'decimal'&quot;,&quot;section&quot;:&quot;Reports&quot;}}">
+class Component extends DCLogic {
+  state = {
+    engine: null, tab: 'config', selId: null, selSec: 0, showDefaults: false, printing: false,
+    job: { name: '3DB15 Sample', client: 'LV Home Service', catalog: 'Optima', drawn: 'JG' },
+    defaults: {},
+    cabs: [
+      { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' },
+      { id: 2, type: 'V', w: '30', h: '30', d: '21', toe: '0', qty: '1' },
+      { id: 3, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' },
+    ],
+  };
+  nextId = 4;
+  componentDidMount() {
+    import('./cutlist-engine.js').then(engine => this.setState({ engine }));
+    window.addEventListener('afterprint', this.afterPrint);
+  }
+  componentWillUnmount() { window.removeEventListener('afterprint', this.afterPrint); }
+  afterPrint = () => this.setState({ printing: false });
+  upd = (id, patch) => this.setState(s => ({ cabs: s.cabs.map(c => c.id === id ? { ...c, ...patch } : c) }));
+  renderVals() {
+    const E = this.state.engine;
+    const { job, cabs, tab, printing, showDefaults, defaults } = this.state;
+    const today = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    const setJob = k => e => this.setState(s => ({ job: { ...s.job, [k]: e.target.value } }));
+    const base = {
+      today, job, showDefaults, defaultsBtn: showDefaults ? 'Hide construction rules' : 'Show construction rules (reveals, gaps, deducts)',
+      onJobName: setJob('name'), onJobClient: setJob('client'), onJobCatalog: setJob('catalog'), onJobDrawn: setJob('drawn'),
+      toggleDefaults: () => this.setState(s => ({ showDefaults: !s.showDefaults })),
+      resetDefaults: () => this.setState({ defaults: {} }),
+      addCab: () => { const t = E ? E.TYPES.B : { h: 34.5, d: 24, toe: 4.5 }; const id = this.nextId++; this.setState(s => ({ selId: id, selSec: 0, tab: 'config', cabs: [...s.cabs, { id, type: 'B', w: '30', h: String(t.h), d: String(t.d), toe: String(t.toe), qty: '1' }] })); },
+      printAll: () => { this.setState({ printing: true }); setTimeout(() => window.print(), 150); },
+      headerTxt: `Created for ${job.client} | ${job.name} | ${job.catalog} · ${today}`,
+      footerTxt: `Shop packet for mill — not a Cabinet Vision file. Confirm banding. ${job.name}`,
+      show: { config: !printing && tab === 'config', cut: printing || tab === 'cut', doors: printing || tab === 'doors', drawers: printing || tab === 'drawers', assembly: printing || tab === 'assembly', nest: printing || tab === 'nest', install: printing || tab === 'install', hardware: printing || tab === 'hardware' },
+    };
+    const tabDefs = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['nest', 'Nest'], ['install', 'Install'], ['hardware', 'Hardware']];
+    base.tabs = tabDefs.map(([k, label]) => ({ label, onClick: () => this.setState({ tab: k }), line: tab === k ? '#00A4FF' : 'transparent', color: tab === k ? '#0B0B0C' : '#6E6E78' }));
+    if (!E) return { ...base, cabs: [], catList: [], materials: [], doors: [], drawers: [], builtCabs: [], nestSheets: [], hardware: [], install: { items: [], viewBox: '0 0 100 100' }, cfg: { eyebrow: 'Configure', title: '', subTxt: '', ready: false, empty: false, sections: [], faces: [], shelfLines: [], rollRects: [], dims: [] }, numFields: [], textFields: [], summaryTxt: 'Loading…' };
+    E.setFmtMode(this.props.dimFormat ?? 'fraction');
+    const fmt = E.fmt, pd = E.parseDim;
+    const job2 = E.buildJob(cabs, defaults);
+    const d = job2.d;
+    const okB = v => isNaN(pd(v)) || pd(v) <= 0 ? '#D14343' : '#E2E2E6';
+    const blur = (id, k) => e => { const v = pd(e.target.value); if (!isNaN(v)) this.upd(id, { [k]: fmt(v) }); };
+    base.catList = E.CATEGORIES.map(([key, label]) => ({ key, label }));
+    const cfgsFor = cat => Object.entries(E.TYPES).filter(([, t]) => t.cat === cat).map(([key, t]) => ({ key, label: t.label, img: t.img }));
+    const setType = (id, type) => { const t = E.TYPES[type]; this.upd(id, { type, h: fmt(t.h), d: fmt(t.d), toe: fmt(t.toe), layout: null }); };
+    const pickId = this.state.pickId;
+    const selCabId = (cabs.find(c => c.id === this.state.selId) || cabs[0] || {}).id;
+    base.cabs = cabs.map((c, i) => {
+      const b = job2.cabs[i];
+      const fr = b.bad ? '' : ' · ' + b.fronts.map(f => `${f.qty > 1 ? f.qty + '× ' : ''}${f.desc} ${fmt(f.w)} x ${fmt(f.l)}`).join(', ');
+      return {
+        ...c, n: i + 1, code: b.code, rowBg: c.id === selCabId ? '#EEF8FF' : 'transparent', configure: () => this.setState({ selId: c.id, selSec: 0, tab: 'config' }), sizeTxt: b.bad ? 'enter width, height and depth' : `${fmt(b.W)} x ${fmt(b.H)} x ${fmt(b.D)}`, frontsTxt: fr,
+        wBorder: okB(c.w), hBorder: okB(c.h), dBorder: okB(c.d),
+        cat: (E.TYPES[c.type] || {}).cat, img: (E.TYPES[c.type] || {}).img, cfgLabel: (E.TYPES[c.type] || {}).label,
+        picking: pickId === c.id, pickBorder: pickId === c.id ? '#00A4FF' : '#E2E2E6',
+        pickTitle: `${(E.CATEGORIES.find(x => x[0] === (E.TYPES[c.type] || {}).cat) || [])[1]} configurations`,
+        togglePick: () => this.setState({ pickId: pickId === c.id ? null : c.id }),
+        configs: cfgsFor((E.TYPES[c.type] || {}).cat).map(t => ({ ...t, border: t.key === c.type ? '2px solid #00A4FF' : '1px solid #E2E2E6', bg: t.key === c.type ? '#EEF8FF' : '#fff',
+          onPick: () => { setType(c.id, t.key); this.setState({ pickId: null, selId: c.id, selSec: 0 }); } })),
+        onCat: e => { setType(c.id, cfgsFor(e.target.value)[0].key); this.setState({ pickId: c.id }); },
+        onW: e => this.upd(c.id, { w: e.target.value }), onH: e => this.upd(c.id, { h: e.target.value }), onD: e => this.upd(c.id, { d: e.target.value }),
+        onToe: e => this.upd(c.id, { toe: e.target.value }), onQty: e => this.upd(c.id, { qty: e.target.value }),
+        blurW: blur(c.id, 'w'), blurH: blur(c.id, 'h'), blurD: blur(c.id, 'd'), blurToe: blur(c.id, 'toe'),
+        remove: () => this.setState(s => ({ cabs: s.cabs.filter(x => x.id !== c.id) })),
+      };
+    });
+    const setDef = k => e => this.setState(s => ({ defaults: { ...s.defaults, [k]: e.target.value } }));
+    base.numFields = E.DEFAULT_FIELDS.map(([k, label]) => ({ label, value: defaults[k] ?? fmt(E.DEFAULTS[k]), onChange: setDef(k) }));
+    base.textFields = E.DEFAULT_TEXT.map(([k, label]) => ({ label, value: defaults[k] ?? E.DEFAULTS[k], onChange: setDef(k) }));
+    Object.assign(base, {
+      materials: job2.materials, drawers: job2.drawers, hardware: job2.hardware,
+      doors: job2.doors.map(r => ({ ...r, typeTxt: r.type })),
+      kerfTxt: d.kerf, sideRevealTxt: fmt(2 * d.sideReveal), boxDeductTxt: fmt(d.boxDeduct), glideDeductTxt: fmt(d.glideDeduct), glideSeriesTxt: d.glideSeries,
+      doorStyleTxt: d.doorStyle, drawerStyleTxt: d.drawerStyle, toeRecessTxt: fmt(d.toeRecess), caseMatTxt: d.caseMat, backMatTxt: d.backMat, pullTxt: d.pull,
+      summaryTxt: `${job2.summary.nParts} parts · ${job2.summary.nFronts} fronts · ${job2.summary.nDrawers} drawers · ${job2.summary.sheets} sheets`,
+    });
+    const fill = k => k === 'drawer' ? '#DDF0FF' : k === 'false' ? '#EFEFF2' : k === 'open' ? 'none' : '#fff';
+    const rows = ps => ps.map(p => ({ ...p, wTxt: fmt(p.w), lTxt: fmt(p.l) }));
+    base.builtCabs = job2.cabs.filter(c => !c.bad).map(c => {
+      const shapes = E.elevShapes(c, d).map(s => ({ ...s, fill: fill(s.kind), txt: `${s.tag}  ${s.label}` }));
+      const pad = Math.max(c.W, c.boxH) * 0.14;
+      return { ...c, shapes, vb: `${-pad} ${-pad * 0.4} ${c.W + 2 * pad} ${c.boxH + pad * 1.6}`, fs: Math.max(c.W, c.boxH) / 22, midX: c.W / 2, midY: c.boxH / 2, dimY: c.boxH + pad * 0.7, dimX: -pad * 0.5, rot: `rotate(-90 ${-pad * 0.5} ${c.boxH / 2})`,
+        wTxt: `${fmt(c.W)}"`, hTxt: `${fmt(c.boxH)}" box`, sizeTxt: `${fmt(c.W)} x ${fmt(c.H)} x ${fmt(c.D)}`, toeTxt: fmt(c.toe), toeNote: c.toe > 0 ? 'Toe is a separate assembly — box height excludes toe.' : 'No toe kick — floor-set box.',
+        frontRows: rows(c.fronts), partRows: rows(c.parts) };
+    });
+    base.nestSheets = job2.nests.flatMap(n => n.sheets.map(s => ({ ...s, L: n.L, W: n.W, vb: `-0.5 -0.5 ${n.L + 1} ${n.W + 1}`,
+      parts: s.parts.map(p => { const fs = Math.min(2.2, p.sh / 3.2, p.sw / (p.label.length * 0.62)); return { ...p, fs, fs2: fs * 0.75, sub2: `${p.sub} ${p.arrow}`, ty: p.ty - (p.sh > 4 ? fs * 0.55 : 0), ty2: p.ty + fs * 0.6 }; }) })));
+    const over = job2.nests.flatMap(n => n.oversize.map(o => `${o.name} (${fmt(o.along)} x ${fmt(o.across)})`));
+    base.hasOversize = over.length > 0; base.oversizeTxt = 'Does not fit sheet: ' + over.join(', ');
+    const inst = job2.install;
+    base.install = { ...inst, floorX2: inst.totalW + 2, midX: inst.totalW / 2, totalY: inst.floorY + inst.labelSize * 2.6,
+      items: inst.items.map(c => { const cb = job2.cabs.find(x => x.idx === c.idx); const sh = E.elevShapes(cb, d).map(s => ({ ...s, x: s.x + c.x, y: s.y + c.y, fill: fill(s.kind) }));
+        return { ...c, shapes: sh, tag: `#${c.idx} ${c.code}`, toeY: c.y + c.h - c.toe, tagY: c.y - inst.labelSize * 1.6, dimY: c.y - inst.labelSize * 0.4 }; }) };
+    base.cfg = this.buildCfg(E, d, cabs, job2);
+    return base;
+  }
+  buildCfg(E, d, cabs, job2) {
+    const fmt = E.fmt, pd = E.parseDim;
+    const selIdx = Math.max(0, cabs.findIndex(c => c.id === this.state.selId));
+    const sc = cabs[selIdx], sb = job2.cabs[selIdx];
+    const blank = { sections: [], faces: [], shelfLines: [], rollRects: [], dims: [] };
+    if (!sc) return { ...blank, ready: false, empty: true, emptyTxt: 'Add a cabinet to configure it.', eyebrow: 'Configure', title: 'No cabinets' };
+    const cur = sc.layout || E.defaultLayout(sc.type, d, pd(sc.h)).map(s => ({ ...s, h: typeof s.h === 'number' ? fmt(s.h) : s.h }));
+    const setL = fn => this.upd(sc.id, { layout: fn(cur.map(s => ({ ...s }))) });
+    const selSec = Math.max(0, Math.min(this.state.selSec || 0, cur.length - 1));
+    const go = dir => { const j = (selIdx + dir + cabs.length) % cabs.length; this.setState({ selId: cabs[j].id, selSec: 0 }); };
+    const t = E.TYPES[sc.type] || {};
+    const cfg = { ...blank, eyebrow: `Configure · cabinet ${selIdx + 1} of ${cabs.length}`, title: `#${selIdx + 1} ${sb.code}`,
+      subTxt: sb.bad ? t.label : `${(E.CATEGORIES.find(x => x[0] === t.cat) || [])[1]} · ${t.label} · ${fmt(sb.W)} W x ${fmt(sb.H)} H x ${fmt(sb.D)} D`,
+      prev: () => go(-1), next: () => go(1), ready: !sb.bad, empty: sb.bad, emptyTxt: 'Enter width, height and depth to see the drawing.',
+      statusTxt: sc.layout ? 'Custom layout' : 'Standard layout', warn: sb.warn, hasWarn: !!sb.warn,
+      reset: () => this.setState(s => ({ selSec: 0, cabs: s.cabs.map(c => c.id === sc.id ? { ...c, layout: null } : c) })) };
+    if (sb.bad) return cfg;
+    const at = selSec + 1;
+    cfg.addLabel = `Add below ${sb.sections[selSec]?.tag || ''}`;
+    const add = (kind, h) => { setL(L => { L.splice(at, 0, E.newSection(kind, h)); return L; }); this.setState({ selSec: at }); };
+    cfg.addDrawer = () => add('drawer', fmt(d.smallFront)); cfg.addDoor = () => add('door', ''); cfg.addFalse = () => add('false', fmt(d.smallFront)); cfg.addOpen = () => add('open', '');
+    const kinds = [['drawer', 'Drawer'], ['door', 'Door'], ['false', 'False'], ['open', 'Open']];
+    const stop = f => e => { e.stopPropagation(); f(); };
+    cfg.sections = sb.sections.map((s, i) => {
+      const sel = i === selSec, store = s.kind === 'door' || s.kind === 'open';
+      const step = (k, dv, min, max) => () => setL(L => { const v = k === 'split' ? s.n : (+L[i][k] || 0); L[i] = { ...L[i], [k]: Math.max(min, Math.min(max, v + dv)) }; return L; });
+      const seg = (val, cur2, onClick, label) => ({ label, onClick, bg: val === cur2 ? '#0B0B0C' : '#fff', color: val === cur2 ? '#fff' : '#4A4A52' });
+      return {
+        tag: s.tag, bg: sel ? '#EEF8FF' : '#fff', border: sel ? '#00A4FF' : '#E2E2E6', select: () => this.setState({ selSec: i }),
+        kinds: kinds.map(([k, label]) => seg(k, s.kind, () => setL(L => { const keep = k === 'door' || k === 'open'; L[i] = { ...L[i], kind: k, split: k === 'door' ? 0 : 1, shelves: keep ? L[i].shelves : 0, rollouts: keep ? L[i].rollouts : 0 }; return L; }), label)),
+        hVal: cur[i]?.h ?? '', autoTxt: `auto ${fmt(s.h)}`,
+        onH: e => { const v = e.target.value; setL(L => { L[i] = { ...L[i], h: v }; return L; }); },
+        onHBlur: e => { const v = pd(e.target.value); setL(L => { L[i] = { ...L[i], h: isNaN(v) || v <= 0 ? '' : fmt(v) }; return L; }); },
+        showSplit: s.kind === 'drawer' || s.kind === 'door', splitLabel: s.kind === 'door' ? 'Doors' : 'Drawers across', split: s.n, splitDec: step('split', -1, 1, 4), splitInc: step('split', 1, 1, 4),
+        showStore: store, shelves: s.shelves, shelfDec: step('shelves', -1, 0, 8), shelfInc: step('shelves', 1, 0, 8), rollouts: s.rollouts, rollDec: step('rollouts', -1, 0, 5), rollInc: step('rollouts', 1, 0, 5),
+        showHinge: s.kind === 'door' && s.n === 1, hinges: [['L', 'Left'], ['R', 'Right']].map(([hg, label]) => seg(hg, s.hinge, () => setL(L => { L[i] = { ...L[i], hinge: hg }; return L; }), label)),
+        sizeTxt: s.kind === 'open' ? `Opening ${fmt(s.h)} high` : `${s.n > 1 ? s.n + ' × ' : ''}${fmt(s.pw)} x ${fmt(s.h)}`,
+        up: stop(() => { if (i > 0) { setL(L => { [L[i - 1], L[i]] = [L[i], L[i - 1]]; return L; }); this.setState({ selSec: i - 1 }); } }),
+        down: stop(() => { if (i < cur.length - 1) { setL(L => { [L[i + 1], L[i]] = [L[i], L[i + 1]]; return L; }); this.setState({ selSec: i + 1 }); } }),
+        remove: stop(() => { if (cur.length > 1) { setL(L => { L.splice(i, 1); return L; }); this.setState({ selSec: Math.max(0, i - 1) }); } }),
+      };
+    });
+    const W = sb.W, H = sb.H, big = Math.max(W, H), fs = big / 30, thk = d.caseThk;
+    cfg.faces = E.elevShapes(sb).map(s => {
+      const sel = s.sec === selSec, { x, y, w, h } = s;
+      let swing = '', px1 = 0, py1 = 0, px2 = 0, py2 = 0, pullStroke = 'none';
+      if (s.kind === 'door') {
+        swing = s.hinge === 'R' ? `${x},${y} ${x + w},${y + h / 2} ${x},${y + h}` : `${x + w},${y} ${x},${y + h / 2} ${x + w},${y + h}`;
+        const len = Math.min(4, h * 0.3), px = s.hinge === 'R' ? x + 1.5 : x + w - 1.5;
+        const atBottom = sb.isWall || (sb.isTall && s.sec === 0 && sb.sections.length > 1);
+        const py = atBottom ? y + h - 1.5 - len : y + 1.5;
+        px1 = px2 = px; py1 = py; py2 = py + len; pullStroke = '#0B0B0C';
+      } else if (s.kind === 'drawer' && h > 3) {
+        const len = Math.min(4, w * 0.35); px1 = x + w / 2 - len / 2; px2 = x + w / 2 + len / 2; py1 = py2 = y + Math.min(h * 0.25, 2.5); pullStroke = '#0B0B0C';
+      }
+      const label = `${s.secTag}  ${fmt(w)} x ${fmt(h)}`;
+      return { x, y, w, h, swing, px1, py1, px2, py2, pullStroke, label, tx: x + w / 2, ty: y + h / 2 + (s.kind === 'drawer' ? Math.min(h * 0.1, 0.6) : 0),
+        tfs: Math.max(0.1, Math.min(fs, h / 2.4, w / (label.length * 0.6))),
+        fill: sel ? '#DDF0FF' : s.kind === 'false' ? '#EFEFF2' : s.kind === 'open' ? '#F7F7F9' : '#fff', stroke: sel ? '#00A4FF' : '#0B0B0C',
+        sw: sel ? big / 180 : big / 400, dash: s.kind === 'open' ? `${big / 80} ${big / 120}` : 'none', onClick: () => this.setState({ selSec: s.sec }) };
+    });
+    for (const s of sb.sections) {
+      if (s.kind !== 'door' && s.kind !== 'open') continue;
+      for (let k = 1; k <= s.shelves; k++) cfg.shelfLines.push({ x1: thk, x2: W - thk, y: s.y + s.h * k / (s.shelves + 1) });
+      const slot = s.h / Math.max(1, s.rollouts);
+      for (let k = 0; k < s.rollouts; k++) cfg.rollRects.push({ x: thk + d.rolloutSpacer, w: W - 2 * (thk + d.rolloutSpacer), h: d.rolloutH, y: Math.max(s.y, s.y + slot * (k + 1) - d.rolloutH - 0.5) });
+    }
+    const dimX = W + fs * 1.2;
+    cfg.dims = sb.sections.map((s, i) => ({ y1: s.y, y2: s.y + s.h, ty: s.y + s.h / 2, txt: `${s.tag} ${fmt(s.h)}`, weight: i === selSec ? 800 : 500, color: i === selSec ? '#0078BD' : '#4A4A52' }));
+    if (sb.toe > 0) cfg.dims.push({ y1: sb.boxH, y2: H, ty: sb.boxH + sb.toe / 2, txt: `Toe ${fmt(sb.toe)}`, weight: 500, color: '#6E6E78' });
+    const hDimX = -fs * 1.4;
+    const boxes = sb.drawers.map(b => `${b.qty} × ${b.kind.toLowerCase()} ${fmt(b.w)} x ${fmt(b.dp)} x ${fmt(b.h)} (${b.sec})`);
+    Object.assign(cfg, { W, H, boxH: sb.boxH, toe: sb.toe, sw: big / 250, sw2: big / 500, pullW: big / 160, dash: `${big / 90} ${big / 140}`,
+      dimX, tickX1: W + fs * 0.6, tickX2: W + fs * 1.8, dimTX: W + fs * 2.2, dimFs: fs * 0.9,
+      wDimY: H + fs * 1.2, wTextY: H + fs * 2.6, midX: W / 2, wTxt: `${fmt(W)}"`,
+      hDimX, hTextX: hDimX - fs * 0.7, midY: H / 2, rot: `rotate(-90 ${hDimX - fs * 0.7} ${H / 2})`, hTxt: `${fmt(H)}"`,
+      vb: `${-fs * 3.4} ${-fs} ${W + fs * 3.4 + fs * 8} ${H + fs * 4.4}`,
+      hasBoxes: boxes.length > 0, boxesTxt: boxes.join(' · ') });
+    return cfg;
+  }
+}
+</script>
+</body>
+</html>
