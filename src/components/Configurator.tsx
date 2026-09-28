@@ -106,12 +106,13 @@ export function Configurator({ cabs, built, d, f, selId, selSec: rawSec, onSelec
       dash: s.kind === 'open' ? `${big / 80} ${big / 120}` : undefined,
     };
   });
-  const shelfLines: { y: number }[] = [], rollRects: { y: number }[] = [];
+  const shelfLines: { y: number }[] = [], rollRects: { x: number; w: number; y: number }[] = [];
   for (const s of sb.sections) {
     if (s.kind !== 'door' && s.kind !== 'open') continue;
     for (let k = 1; k <= s.shelves; k++) shelfLines.push({ y: s.y + (s.h * k) / (s.shelves + 1) });
     const slot = s.h / Math.max(1, s.rollouts);
-    for (let k = 0; k < s.rollouts; k++) rollRects.push({ y: Math.max(s.y, s.y + slot * (k + 1) - d.rolloutH - 0.5) });
+    const x0 = thk + (s.spacerL ? d.rolloutSpacer : 0), x1 = W - thk - (s.spacerR ? d.rolloutSpacer : 0);
+    for (let k = 0; k < s.rollouts; k++) rollRects.push({ x: x0, w: x1 - x0, y: Math.max(s.y, s.y + slot * (k + 1) - d.rolloutH - 0.5) });
   }
   const dims = sb.sections.map((s, i) => ({ y1: s.y, y2: s.y + s.h, ty: s.y + s.h / 2, txt: `${s.tag} ${f(s.h)}`, weight: i === selSec ? 800 : 500, color: i === selSec ? 'var(--color-link)' : 'var(--color-ink-3)' }));
   if (sb.toe > 0) dims.push({ y1: sb.boxH, y2: H, ty: sb.boxH + sb.toe / 2, txt: `Toe ${f(sb.toe)}`, weight: 500, color: 'var(--color-muted)' });
@@ -137,7 +138,7 @@ export function Configurator({ cabs, built, d, f, selId, selSec: rawSec, onSelec
             ))}
             {shelfLines.map((l, k) => <line key={k} x1={thk} y1={l.y} x2={W - thk} y2={l.y} stroke="var(--color-muted)" strokeWidth={sw2} strokeDasharray={dash} pointerEvents="none" />)}
             {rollRects.map((r, k) => (
-              <rect key={k} x={thk + d.rolloutSpacer} y={r.y} width={W - 2 * (thk + d.rolloutSpacer)} height={d.rolloutH} fill="none" stroke="var(--color-link)" strokeWidth={sw2} strokeDasharray={dash} pointerEvents="none" />
+              <rect key={k} x={r.x} y={r.y} width={r.w} height={d.rolloutH} fill="none" stroke="var(--color-link)" strokeWidth={sw2} strokeDasharray={dash} pointerEvents="none" />
             ))}
             {faces.map(fc => (
               <text key={fc.key} x={fc.tx} y={fc.ty} textAnchor="middle" dominantBaseline="middle" fontSize={fc.tfs} fontWeight={700} fill="var(--color-ink)" pointerEvents="none">{fc.label}</text>
