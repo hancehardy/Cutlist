@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Mulish";
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/mulish/v13/1Ptyg83HX_SGhgqO0yLcmjzUAuWexZNRwaClGrw-PTY.woff2") format("woff2");
+}
+
+@theme {
+  --font-sans: "Mulish", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #0B0B0C;
+  --color-ink-2: #2C2C32;
+  --color-ink-3: #4A4A52;
+  --color-muted: #6E6E78;
+  --color-faint: #9A9AA3;
+  --color-rule: #C2C2C9;
+  --color-line: #E2E2E6;
+  --color-line-2: #EFEFF2;
+  --color-canvas: #F7F7F9;
+  --color-accent: #00A4FF;
+  --color-accent-dk: #008FE0;
+  --color-link: #0078BD;
+  --color-sel: #EEF8FF;
+  --color-drawer: #DDF0FF;
+  --color-danger: #D14343;
+  --color-err: #B42318;
+  --color-err-bg: #FEF3F2;
+}
+
+@layer base {
+  html, body { margin: 0; padding: 0; background: var(--color-canvas); color: var(--color-ink); -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font-sans); }
+  a { color: var(--color-link); text-decoration: none; }
+  a:hover { color: var(--color-accent); text-decoration: underline; }
+  input, select, button { font-family: inherit; }
+  button { cursor: pointer; }
+}
+
+@layer components {
+  /* Shared input focus treatment from the design. */
+  .field { outline: none; background: #fff; border: 1px solid var(--color-line); border-radius: 6px; }
+  .field:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(0, 164, 255, 0.25); }
+  .field-bad { border-color: var(--color-danger); }
+
+  .card { background: #fff; border: 1px solid var(--color-line); border-radius: 12px; }
+  .eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-accent); }
+
+  /* Report table header + cell. */
+  .th { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-muted); padding-bottom: 6px; border-bottom: 1px solid var(--color-ink); }
+  .td { padding: 6px 0; border-bottom: 1px solid var(--color-line-2); }
+  .th-sm { padding-bottom: 4px; }
+  .td-sm { padding: 4px 0; }
+}
+
+@media print {
+  html, body { background: #fff; }
+  [data-print-hide] { display: none !important; }
+  [data-report] { break-after: page; box-shadow: none !important; border: none !important; }
+  [data-shell] { display: block !important; padding: 0 !important; }
+  [data-reports] { max-width: none !important; }
+}
