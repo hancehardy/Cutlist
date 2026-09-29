@@ -5,7 +5,9 @@ import { TYPES, buildJob, configsFor, makeFmt, type CabInput, type DefaultKey, t
 import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
 import { CabinetList } from './CabinetList';
 import { Configurator } from './Configurator';
-import { JobHeader } from './JobHeader';
+import { JobSetup } from './JobSetup';
+import { JobSummaryCard } from './JobSummaryCard';
+import { presetFor } from '@/lib/presets';
 import { JobsMenu } from './JobsMenu';
 import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, InstallSheet, NestSheets, type ReportCtx } from './Reports';
 
@@ -68,7 +70,8 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
   const [selId, setSelId] = useState<number | null>(initialDoc.cabs[0]?.id ?? null);
   const [selSec, setSelSec] = useState(0);
   const [pickId, setPickId] = useState<number | null>(null);
-  const [showDefaults, setShowDefaults] = useState(false);
+  // New jobs start on the setup page; saved jobs go straight to item entry.
+  const [view, setView] = useState<'setup' | 'items'>(initialDoc.setupDone ? 'items' : 'setup');
   const [printing, setPrinting] = useState(false);
   const [today, setToday] = useState('');
   const save = useAutosave(jobId, doc);
@@ -98,23 +101,36 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
   const show = (t: Tab) => (t === 'config' ? !printing && tab === 'config' : printing || tab === t);
   const s = result.summary;
 
+  const topBar = (
+    <div className="flex items-center gap-3">
+      <img src="/assets/logo-mark.png" alt="" className="h-[34px] w-[34px] object-contain" />
+      <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
+      <JobsMenu jobId={jobId} doc={doc} initialJobs={initialJobs} saveState={save.state} onOpen={openJob}
+        onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} />
+      <div className="ml-auto text-xs tracking-[0.04em] text-muted">{today}</div>
+    </div>
+  );
+
+  if (view === 'setup') {
+    return (
+      <div className="box-border flex min-h-screen flex-col gap-5 p-5">
+        <div className="mx-auto w-full max-w-[880px]">{topBar}</div>
+        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} f={f}
+          onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
+          onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}
+          onPreset={key => setDoc(d => ({ ...d, method: key, defaults: { ...presetFor(key).values } }))}
+          onContinue={() => { setDoc(d => (d.setupDone ? d : { ...d, setupDone: true })); setView('items'); window.scrollTo(0, 0); }} />
+      </div>
+    );
+  }
+
   return (
     <div data-shell="1" className="box-border flex min-h-screen flex-wrap items-start gap-5 p-5">
       {/* ============ INPUT PANEL ============ */}
       <div data-print-hide="1" className="flex max-w-[640px] min-w-0 flex-[1_1_600px] flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <img src="/assets/logo-mark.png" alt="" className="h-[34px] w-[34px] object-contain" />
-          <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
-          <JobsMenu jobId={jobId} doc={doc} initialJobs={initialJobs} saveState={save.state} onOpen={openJob}
-            onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} />
-          <div className="ml-auto text-xs tracking-[0.04em] text-muted">{today}</div>
-        </div>
+        {topBar}
 
-        <JobHeader job={job} defaults={doc.defaults} showDefaults={showDefaults} f={f}
-          onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
-          onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}
-          onToggleDefaults={() => setShowDefaults(v => !v)}
-          onResetDefaults={() => setDoc(d => ({ ...d, defaults: {} }))} />
+        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} d={result.d} onEdit={() => { setView('setup'); window.scrollTo(0, 0); }} />
 
         <CabinetList cabs={cabs} built={result.cabs} f={f} selId={selCabId} pickId={pickId}
           onUpdate={upd}

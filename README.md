@@ -12,8 +12,9 @@ npm run build && npm start
 ```
 
 - **Data:** jobs autosave to SQLite at `data/cutlist.db` (override with `CUTLIST_DB=/path/file.db`). A new database is seeded with the 3DB15 sample job.
+- **Job setup page:** new jobs start here: job details, construction method (frameless presets in `src/lib/presets.ts`), materials and hardware (dropdowns with Other…) and construction rules. **Continue to items** opens item entry; **Edit setup** on the job summary card returns to it.
 - **Jobs menu** (next to the title): switch jobs, new / new from sample, import and export `.cutlist.json`, fraction or decimal dimensions, delete.
-- **Code map:** `src/lib/engine.ts` construction rules and report math · `src/lib/job.ts` job document + import validation · `src/lib/db.ts` SQLite · `src/app/api/jobs` REST API · `src/components` UI.
+- **Code map:** `src/lib/engine.ts` construction rules and report math · `src/lib/job.ts` job document + import validation · `src/lib/presets.ts` construction presets and dropdown choices · `src/lib/db.ts` SQLite · `src/app/api/jobs` REST API · `src/components` UI.
 
 ---
 
