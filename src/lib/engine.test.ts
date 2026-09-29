@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildJob, fmt, newSection, parseDim } from './engine';
-import { normalizeJobDoc, sampleJob } from './job';
+import { emptyJob, normalizeJobDoc, sampleJob } from './job';
+import { isCustomized, presetFor } from './presets';
 
 describe('parseDim / fmt', () => {
   it('parses fractions, mixed numbers and decimals', () => {
@@ -127,5 +128,28 @@ describe('normalizeJobDoc', () => {
     const doc = normalizeJobDoc({ cabs: [{ id: 1, type: 'XX' }, { id: 1, type: 'W' }] });
     expect(doc.cabs.map(c => c.id)).toEqual([1, 2]);
     expect(doc.cabs[0].type).toBe('B');
+  });
+});
+
+describe('job setup', () => {
+  it('new jobs start on setup; saved jobs without the flag open on items', () => {
+    expect(emptyJob().setupDone).toBe(false);
+    expect(normalizeJobDoc({ cabs: [] }).setupDone).toBe(true);
+    expect(normalizeJobDoc({ cabs: [], setupDone: false }).setupDone).toBe(false);
+  });
+
+  it('falls back to the standard preset for unknown methods', () => {
+    expect(normalizeJobDoc({ cabs: [], method: 'face-frame' }).method).toBe('frameless-melamine');
+    expect(normalizeJobDoc({ cabs: [], method: 'frameless-ply' }).method).toBe('frameless-ply');
+  });
+
+  it('detects edits away from the chosen preset', () => {
+    expect(isCustomized('frameless-melamine', {})).toBe(false);
+    expect(isCustomized('frameless-ply', { ...presetFor('frameless-ply').values })).toBe(false);
+    expect(isCustomized('frameless-ply', {})).toBe(true);
+    expect(isCustomized('frameless-melamine', { pull: 'Knob' })).toBe(true);
+    // Typing the shop-standard value back in is not a customization.
+    expect(isCustomized('frameless-melamine', { kerf: '0.187', caseThk: '3/4' })).toBe(false);
+    expect(isCustomized('frameless-melamine', { caseThk: '5/8' })).toBe(true);
   });
 });

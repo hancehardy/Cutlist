@@ -1,5 +1,6 @@
 import type { CabInput, DimFormat, Kind, RawDefaults, SectionInput } from './engine';
 import { TYPES } from './engine';
+import { DEFAULT_PRESET, PRESETS } from './presets';
 
 export interface JobInfo { name: string; client: string; catalog: string; drawn: string }
 
@@ -10,6 +11,10 @@ export interface JobDoc {
   defaults: RawDefaults;
   cabs: CabInput[];
   dimFormat: DimFormat;
+  /** Construction preset key (see presets.ts); `defaults` holds its values plus any edits. */
+  method: string;
+  /** False until the setup page's "Continue to items" is pressed; new jobs open on setup. */
+  setupDone: boolean;
 }
 
 export interface JobSummary { id: string; name: string; client: string; updatedAt: string }
@@ -25,11 +30,13 @@ export function sampleJob(): JobDoc {
       { id: 3, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1', layout: null },
     ],
     dimFormat: 'fraction',
+    method: DEFAULT_PRESET,
+    setupDone: true,
   };
 }
 
 export function emptyJob(): JobDoc {
-  return { version: 1, job: { name: 'New job', client: '', catalog: '', drawn: '' }, defaults: {}, cabs: [], dimFormat: 'fraction' };
+  return { version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults: {}, cabs: [], dimFormat: 'fraction', method: DEFAULT_PRESET, setupDone: false };
 }
 
 const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : fallback);
@@ -82,5 +89,8 @@ export function normalizeJobDoc(raw: unknown): JobDoc {
     defaults,
     cabs,
     dimFormat: r.dimFormat === 'decimal' ? 'decimal' : 'fraction',
+    method: PRESETS.some(p => p.key === r.method) ? (r.method as string) : DEFAULT_PRESET,
+    // Jobs saved before setup existed have no flag: treat them as set up.
+    setupDone: r.setupDone !== false,
   };
 }
