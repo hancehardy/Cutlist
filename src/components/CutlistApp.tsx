@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RULE_FIELDS, buildJob, makeFmt, parseDim, typeFor, typesIn, type CabInput, type CabType, type DefaultKey, type SectionInput } from '@/lib/engine';
-import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
+import { type JobDoc, type JobInfo } from '@/lib/job';
 import type { ShopConfig } from '@/lib/shop';
 import { CabinetList } from './CabinetList';
 import { Configurator } from './Configurator';
@@ -20,9 +20,9 @@ const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['d
 /** Shop-floor reports only an admin sees. */
 const ADMIN_ONLY = new Set<Tab>(['cut', 'optimize']);
 
-interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; initialShop: ShopConfig; user: Me }
+interface Props { jobId: string; initialDoc: JobDoc; initialShop: ShopConfig; user: Me }
 
-export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }: Props) {
+export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
   // The shop config as loaded, plus any boxes saved from this job's configurator.
@@ -74,6 +74,21 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
   const selCabId = (cabs.find(c => c.id === selId) || cabs[0])?.id;
 
   const openJob = async (id: string) => { await save.flush(); router.push(`/?job=${id}`); };
+  const goJobs = async () => { await save.flush(); router.push('/jobs'); };
+  const newJob = async () => {
+    const res = await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) openJob(data.id);
+  };
+  const exportJson = () => {
+    const slug = doc.job.name.trim().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '') || 'job';
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${slug}.cutlist.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   /** Save a cabinet's faces as a box in the shop catalog; optionally switch the cabinet onto it. Returns an error message or null. */
   const saveBox = async (cabId: number, type: CabType, useIt: boolean): Promise<string | null> => {
@@ -96,8 +111,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
     <div className="flex items-center gap-3">
       <img src="/assets/logo-mark.png" alt="" className="h-[34px] w-[34px] object-contain" />
       <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
-      <JobsMenu jobId={jobId} doc={doc} initialJobs={initialJobs} saveState={save.state} onOpen={openJob}
-        onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} />
+      <JobsMenu saveState={save.state} onNew={newJob} onJobs={goJobs} />
       <UserMenu user={user} />
       <div className="text-xs tracking-[0.04em] text-muted">{today}</div>
     </div>
@@ -108,6 +122,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
       <div className="box-border flex min-h-screen flex-col gap-5 p-5">
         <div className="mx-auto w-full max-w-[880px]">{topBar}</div>
         <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} materials={doc.materials} fronts={doc.fronts} f={f}
+          dimFormat={doc.dimFormat} onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} onExport={exportJson}
           presets={shop.presets} shopMaterials={shop.materials} doorStyles={shop.doorStyles} drawerFrontStyles={shop.drawerFrontStyles} options={shop.options}
           onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
           onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}

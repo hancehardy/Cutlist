@@ -23,7 +23,11 @@ export interface JobDoc {
   setupDone: boolean;
 }
 
-export interface JobSummary { id: string; name: string; client: string; updatedAt: string }
+/** A row of the job list. `owner` is the username, null for jobs saved before accounts existed. */
+export interface JobSummary {
+  id: string; name: string; client: string; catalog: string; cabs: number;
+  ownerId: string | null; owner: string | null; createdAt: string; updatedAt: string;
+}
 
 const MELAMINE_34: Material = { name: '3/4 2s Melamine', thk: '3/4', w: '49', l: '97' };
 const MELAMINE_14: Material = { name: '1/4 1s Melamine', thk: '1/4', w: '49', l: '97' };

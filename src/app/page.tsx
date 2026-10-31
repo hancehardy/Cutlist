@@ -14,5 +14,5 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ j
   // No jobs yet (or every job was deleted): start a blank one for this user.
   if (!jobs.length) { createJob(emptyJob(shop), user.id); jobs = listJobs(user); }
   const initial = (requested && getJob(requested, user)) || getJob(jobs[0].id, user)!;
-  return <CutlistApp key={initial.id} jobId={initial.id} initialDoc={initial.doc} initialJobs={jobs} initialShop={shop} user={{ username: user.username, role: user.role }} />;
+  return <CutlistApp key={initial.id} jobId={initial.id} initialDoc={initial.doc} initialShop={shop} user={{ username: user.username, role: user.role }} />;
 }

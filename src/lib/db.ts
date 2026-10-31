@@ -136,9 +136,15 @@ export function deleteSession(token: string): void {
 const ownerClause = (v?: Viewer | null) => (v && v.role !== 'admin' ? { sql: ' WHERE owner_id = ?', args: [v.id] } : { sql: '', args: [] as string[] });
 
 export function listJobs(viewer?: Viewer | null): JobSummary[] {
-  const c = ownerClause(viewer);
-  const rows = db().prepare(`SELECT id, name, client, updated_at FROM jobs${c.sql} ORDER BY updated_at DESC`).all(...c.args) as Row[];
-  return rows.map(r => ({ id: r.id, name: r.name, client: r.client, updatedAt: r.updated_at }));
+  const c = ownerClause(viewer).sql.replace(' WHERE owner_id', ' WHERE j.owner_id');
+  const rows = db().prepare(`
+    SELECT j.id, j.name, j.client, j.created_at, j.updated_at, j.owner_id, u.username AS owner,
+      COALESCE(json_extract(j.data, '$.job.catalog'), '') AS catalog, COALESCE(json_array_length(j.data, '$.cabs'), 0) AS cabs
+    FROM jobs j LEFT JOIN users u ON u.id = j.owner_id${c} ORDER BY j.updated_at DESC`).all(...ownerClause(viewer).args) as (Row & { created_at: string; owner: string | null; catalog: string; cabs: number })[];
+  return rows.map(r => ({
+    id: r.id, name: r.name, client: r.client, catalog: String(r.catalog ?? ''), cabs: Number(r.cabs) || 0,
+    ownerId: r.owner_id, owner: r.owner, createdAt: r.created_at, updatedAt: r.updated_at,
+  }));
 }
 
 export function jobOwner(id: string): string | null | undefined {

@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type DefaultKey, type Fmt, type FrontStyle, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type DefaultKey, type DimFormat, type Fmt, type FrontStyle, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 import { optionsFor, type ShopOptions } from '@/lib/shop';
@@ -16,6 +16,10 @@ interface Props {
   materials: JobMaterials;
   fronts: JobFronts;
   f: Fmt;
+  dimFormat: DimFormat;
+  onFormat: (f: DimFormat) => void;
+  /** Download this job as a .cutlist.json file. */
+  onExport: () => void;
   /** The shop's construction methods, materials table and hardware choices, from the Admin page. */
   presets: Preset[];
   shopMaterials: Material[];
@@ -48,7 +52,7 @@ function Section({ step, title, sub, children }: { step: number; title: string; 
   );
 }
 
-export function JobSetup({ job, method, defaults, materials, fronts, f, presets, shopMaterials, doorStyles, drawerFrontStyles, options, onJob, onDefault, onMaterial, onFront, onPreset, onResetRules, onContinue, existing }: Props) {
+export function JobSetup({ job, method, defaults, materials, fronts, f, dimFormat, onFormat, onExport, presets, shopMaterials, doorStyles, drawerFrontStyles, options, onJob, onDefault, onMaterial, onFront, onPreset, onResetRules, onContinue, existing }: Props) {
   const [tried, setTried] = useState(false);
   const custom = isCustomized(method, defaults, presets);
   const nameMissing = !job.name.trim();
@@ -90,6 +94,17 @@ export function JobSetup({ job, method, defaults, materials, fronts, f, presets,
           {jobField('drawn', 'Drawn by')}
         </div>
         {tried && nameMissing && <div className="text-xs text-danger">Give the job a name to continue.</div>}
+        <div className="flex flex-wrap items-center gap-3 border-t border-line-2 pt-3 text-xs text-muted">
+          Dimensions
+          <div className="flex overflow-hidden rounded-lg border border-rule">
+            {(['fraction', 'decimal'] as DimFormat[]).map(m => (
+              <button key={m} onClick={() => onFormat(m)} className={`border-none px-[9px] py-1 text-xs font-bold ${dimFormat === m ? 'bg-ink text-white' : 'bg-white text-ink-3'}`}>
+                {m === 'fraction' ? '14 7/8' : '14.875'}
+              </button>
+            ))}
+          </div>
+          <button onClick={onExport} className="ml-auto border-none bg-transparent p-0 text-xs font-semibold text-link hover:underline">Export this job as .json</button>
+        </div>
       </Section>
 
       <Section step={2} title="Construction method" sub="Reveals, gaps and deducts · thickness comes from the materials below">
