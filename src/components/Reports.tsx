@@ -1,4 +1,4 @@
-import { elevShapes, type Fmt, type JobResult, type Kind } from '@/lib/engine';
+import { elevShapes, type Fmt, type JobResult, type Kind, type SawCut } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 
 export interface ReportCtx { r: JobResult; f: Fmt; job: JobInfo; today: string; headerTxt: string; footerTxt: string }
@@ -136,30 +136,66 @@ export function AssemblySheets({ r, f, job, today }: ReportCtx) {
   );
 }
 
-export function NestSheets({ r, f, headerTxt, footerTxt }: ReportCtx) {
-  const over = r.nests.flatMap(n => n.oversize.map(o => `${o.name} (${f(o.along)} x ${f(o.across)})`));
+/** Where a cut's number badge sits: near the start of the cut line. */
+function badgeAt(c: SawCut): [number, number] {
+  if (c.kind === 'trim') return c.y1 === c.y2 ? [3, c.y1] : [c.x1, 3];
+  if (c.kind === 'cross') return [c.x1, c.y1 + 1.5];
+  return [c.x1 + 1.6, c.y1];
+}
+
+export function OptimizeSheets({ r, f, headerTxt, footerTxt }: ReportCtx) {
+  const over = r.sawPlans.flatMap(n => n.oversize.map(o => `${o.name} (${f(o.along)} x ${f(o.across)})`));
   return (
     <>
-      {r.nests.flatMap(n => n.sheets.map(s => (
+      {r.sawPlans.flatMap(n => n.sheets.map(s => (
         <Card key={s.title} title={s.title} sub={headerTxt}>
-          <svg viewBox={`-0.5 -0.5 ${n.L + 1} ${n.W + 1}`} className="mt-3.5 block w-full border border-line bg-canvas">
+          <svg viewBox={`-0.5 -0.5 ${n.L + 1} ${n.W + 1}`} className="mt-3.5 block w-full border border-line bg-canvas" role="img" aria-label={`Cutting diagram, ${s.title}`}>
+            {n.trim > 0 && (
+              <>
+                <rect x={0} y={0} width={n.L} height={n.trim} fill="var(--color-line)" />
+                <rect x={0} y={0} width={n.trim} height={n.W} fill="var(--color-line)" />
+              </>
+            )}
             {s.parts.map(p => {
-              const fs = Math.min(2.2, p.sh / 3.2, p.sw / (p.label.length * 0.62));
-              const ty = p.ty - (p.sh > 4 ? fs * 0.55 : 0);
+              const fs = Math.min(2.2, p.across / 3.2, p.along / (p.label.length * 0.62));
+              const ty = p.ty - (p.across > 4 ? fs * 0.55 : 0);
               return (
                 <g key={p.id}>
-                  <rect x={p.sx} y={p.sy} width={p.sw} height={p.sh} fill="var(--color-drawer)" stroke="var(--color-ink)" strokeWidth={0.12} />
+                  <rect x={p.x} y={p.y} width={p.along} height={p.across} fill="var(--color-drawer)" stroke="var(--color-ink)" strokeWidth={0.12} />
                   <text x={p.tx} y={ty} textAnchor="middle" dominantBaseline="middle" fontSize={fs} fontWeight={700} fill="var(--color-ink)">{p.label}</text>
                   <text x={p.tx} y={p.ty + fs * 0.6} textAnchor="middle" dominantBaseline="middle" fontSize={fs * 0.75} fill="var(--color-ink-3)">{`${p.sub} ${p.arrow}`}</text>
                 </g>
               );
             })}
+            {s.cuts.map(c => (
+              <line key={c.n} x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2} stroke="var(--color-link)" strokeWidth={c.kind === 'rip' || c.kind === 'trim' ? 0.3 : 0.2}
+                strokeDasharray={c.kind === 'recut' ? '1 0.6' : undefined} />
+            ))}
+            {s.cuts.map(c => {
+              const [bx, by] = badgeAt(c);
+              return (
+                <g key={c.n}>
+                  <circle cx={bx} cy={by} r={1.15} fill="var(--color-link)" />
+                  <text x={bx} y={by} textAnchor="middle" dominantBaseline="central" fontSize={1.25} fontWeight={800} fill="#fff">{c.n}</text>
+                </g>
+              );
+            })}
           </svg>
           <div className="mt-2 text-xs text-muted">
-            Sheet {n.L} long x {n.W} wide, kerf {r.d.kerf}&quot;, sheet grain along {n.L}&quot; length. → = part grain runs with sheet, ↕ = across. {s.yieldTxt}. Unshaded = offcut.
+            Panel saw: rip full-length strips along the {f(n.L)}&quot; grain, then crosscut each strip. Sheet {f(n.L)} x {f(n.W)}, kerf {r.d.kerf}&quot;
+            {n.trim > 0 ? `, ${f(n.trim)}" trimmed off one long and one short edge (grey)` : ''}. Parts are never rotated: → = grain runs with the sheet, ↕ = across. {s.yieldTxt}. Unshaded = offcut.
           </div>
+          <div className="mt-4 text-[13px] font-bold text-link">Cut sequence</div>
+          <ol className="mt-1.5 grid gap-x-6 gap-y-0.5 text-[13px] text-ink-2" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))' }}>
+            {s.cuts.map(c => (
+              <li key={c.n} className="flex gap-2 border-b border-line-2 py-1">
+                <span className="w-6 flex-none text-right font-extrabold text-link tabular-nums">{c.n}</span>
+                <span className={c.kind === 'rip' || c.kind === 'trim' ? 'font-semibold' : ''}>{c.text}</span>
+              </li>
+            ))}
+          </ol>
           <Table small cols="36px minmax(140px,2fr) minmax(80px,1fr) minmax(80px,1fr) minmax(70px,0.8fr) 50px"
-            heads={['#', 'Name', 'Along grain', 'Across grain', 'Grain', 'Cab#']}
+            className="mt-4" heads={['#', 'Name', 'Along grain', 'Across grain', 'Grain', 'Cab#']}
             rows={s.parts.map(p => ({ key: p.id, cells: [
               { v: p.id, c: 'font-bold' }, { v: p.name }, { v: p.alongTxt, c: 'font-semibold' }, { v: p.acrossTxt, c: 'font-semibold' },
               { v: p.grain, c: 'text-ink-3' }, { v: p.cab, c: 'text-ink-3' },

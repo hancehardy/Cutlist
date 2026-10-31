@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Cabinet Cutlist',
-  description: 'Build cabinet cut lists, door and drawer lists, nests and shop packets.',
+  description: 'Build cabinet cut lists, door and drawer lists, panel saw cutting plans and shop packets.',
   icons: { icon: '/assets/logo-mark.png' },
 };
 

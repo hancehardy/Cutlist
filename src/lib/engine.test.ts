@@ -151,3 +151,71 @@ describe('job setup', () => {
     expect(isCustomized('frameless-melamine', { caseThk: '5/8' })).toBe(true);
   });
 });
+
+describe('panel saw optimizer', () => {
+  const plan = (cabs: Parameters<typeof buildJob>[0], raw = {}) => buildJob(cabs, raw).sawPlans;
+  const kitchen = [
+    { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' },
+    { id: 2, type: 'B', w: '24', h: '34.5', d: '24', toe: '4.5', qty: '3' },
+    { id: 3, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '2' },
+    { id: 4, type: 'T', w: '18', h: '84', d: '24', toe: '4.5', qty: '1' },
+  ];
+
+  it('places every part once, inside the trimmed sheet, without overlaps, as rip-then-crosscut', () => {
+    const job = buildJob(kitchen, {});
+    const k = job.d.kerf, t = job.d.edgeTrim;
+    for (const p of job.sawPlans) {
+      const expected = job.materials.find(m => m.name === p.name)!.rows.reduce((a, r) => a + r.qty, 0);
+      const placed = p.sheets.flatMap(s => s.parts);
+      expect(placed.length + p.oversize.length).toBe(expected);
+      expect(new Set(placed.map(x => x.id)).size).toBe(placed.length);
+      for (const s of p.sheets) {
+        for (const a of s.parts) {
+          expect(a.x).toBeGreaterThanOrEqual(t - 1e-9);
+          expect(a.y).toBeGreaterThanOrEqual(t - 1e-9);
+          expect(a.x + a.along).toBeLessThanOrEqual(p.L + 1e-9);
+          expect(a.y + a.across).toBeLessThanOrEqual(p.W + 1e-9);
+          // Each part lies in exactly one strip and is no wider than it.
+          const strip = s.strips.find(st => Math.abs(st.y - a.y) < 1e-9)!;
+          expect(strip).toBeDefined();
+          expect(a.across).toBeLessThanOrEqual(strip.w + 1e-9);
+          expect(a.recut).toBe(a.across < strip.w - 1e-9);
+          for (const b of s.parts) {
+            if (a === b) continue;
+            const apart = a.x + a.along + k <= b.x + 1e-9 || b.x + b.along + k <= a.x + 1e-9
+              || a.y + a.across + k <= b.y + 1e-9 || b.y + b.across + k <= a.y + 1e-9;
+            expect(apart).toBe(true);
+          }
+        }
+        // Strips don't overlap across the sheet width.
+        const ys = [...s.strips].sort((x, y) => x.y - y.y);
+        for (let i = 1; i < ys.length; i++) expect(ys[i].y).toBeGreaterThanOrEqual(ys[i - 1].y + ys[i - 1].w + k - 1e-9);
+        // Cut order: trims, then rips, then crosscuts/recuts.
+        const order = s.cuts.map(c => (c.kind === 'trim' ? 0 : c.kind === 'rip' ? 1 : 2));
+        expect(order).toEqual([...order].sort());
+        expect(s.cuts.map(c => c.n)).toEqual(s.cuts.map((_, i) => i + 1));
+      }
+    }
+  });
+
+  it('trims one long and one short edge first, per the edge trim rule', () => {
+    const s = plan([kitchen[0]])[0].sheets[0];
+    expect(s.cuts.slice(0, 2).map(c => c.text)).toEqual(['Trim 1/4" off the long edge', 'Trim 1/4" off the short edge']);
+    const none = plan([kitchen[0]], { edgeTrim: '0' })[0].sheets[0];
+    expect(none.cuts.some(c => c.kind === 'trim')).toBe(false);
+  });
+
+  it('drops a narrower part into a wider strip with a recut instead of opening a new strip', () => {
+    const job = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {});
+    const back = job.sawPlans.find(p => p.name === '1/4 1s Melamine')!.sheets[0];
+    expect(back.strips).toHaveLength(1);
+    const caseSheet = job.sawPlans.find(p => p.name === '3/4 2s Melamine')!.sheets[0];
+    // 21" strip holds the ends and the deck; the narrower deck needs no recut (it is 21 across).
+    expect(caseSheet.parts.filter(p => p.recut).every(p => caseSheet.cuts.some(c => c.kind === 'recut' && c.text.includes(`#${p.id} `)))).toBe(true);
+  });
+
+  it('flags parts larger than the trimmed sheet', () => {
+    const p = plan([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }]);
+    expect(p.flatMap(x => x.oversize.map(o => o.name))).toContain('Unfinished Left End');
+  });
+});
