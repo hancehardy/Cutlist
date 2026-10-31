@@ -74,7 +74,7 @@ export const configsFor = (cat: Category | undefined) =>
   Object.entries(TYPES).filter(([, t]) => t.cat === cat).map(([key, t]) => ({ key, ...t }));
 
 export const DEFAULTS = {
-  caseThk: 0.75, backThk: 0.25, stretcherW: 4, toeRecess: 3,
+  caseThk: 0.75, backThk: 0.25, backGroove: 0.375, backInset: 0.75, stretcherW: 4, toeRecess: 3,
   frontGap: 0.125, sideReveal: 0.0625, topReveal: 0.0625, bottomReveal: 0.125,
   smallFront: 6.1875, boxDeduct: 1.9375, smallBoxH: 4, bigBoxH: 8, xlBoxH: 10,
   rolloutH: 3.5, rolloutSpacer: 1,
@@ -89,7 +89,7 @@ export type DefaultKey = keyof DefaultsShape;
 export type RawDefaults = Partial<Record<DefaultKey, string>>;
 
 export const DEFAULT_FIELDS: [DefaultKey, string][] = [
-  ['caseThk', 'Case thickness'], ['backThk', 'Back thickness'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'],
+  ['caseThk', 'Case thickness'], ['backThk', 'Back thickness'], ['backGroove', 'Back groove depth'], ['backInset', 'Back inset from rear edge'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'],
   ['frontGap', 'Gap between fronts'], ['sideReveal', 'Side reveal (each)'], ['topReveal', 'Top reveal'], ['bottomReveal', 'Bottom reveal'],
   ['smallFront', 'Top drawer front height'], ['boxDeduct', 'Drawer box width deduct'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
   ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
@@ -181,7 +181,10 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   // Case
   P(1, 'Unfinished Left End', D, boxH, 'Vertical', d.caseMat);
   P(1, 'Unfinished Right End', D, boxH, 'Vertical', d.caseMat);
-  P(1, 'Unfinished Back', W - thk, boxH - thk, 'Vertical', d.backMat);
+  // Frameless back: captured in a groove on all four sides, set in from the rear edge so
+  // nailers fit behind it. Usable depth inside the box stops at the back's front face.
+  const inD = D - d.backInset - d.backThk;
+  P(1, 'Unfinished Back', inW + 2 * d.backGroove, boxH - 2 * thk + 2 * d.backGroove, 'Vertical', d.backMat);
   P(1, isWall ? 'Bottom' : 'Deck', D, inW, 'Horizontal', d.caseMat);
   if (isWall || isTall) {
     P(1, 'Top', D, inW, 'Horizontal', d.caseMat);
@@ -200,7 +203,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   if (!nAuto && Math.abs(avail - fixed) > 0.01) out.warn = `Faces total ${f(fixed)}" but the opening is ${f(avail)}". Clear one height to make it auto.`;
   out.autoH = autoH; out.avail = avail;
   const glide = glideLen(D, d);
-  const shelfD = D - d.backThk - d.shelfSetback, shelfW = inW - d.shelfClear;
+  const shelfD = inD - d.shelfSetback, shelfW = inW - d.shelfClear;
   let y = d.topReveal, spacers = 0, drawerStretch = 0, fixedShelves = 0, shelves = 0, rollouts = 0, drawerPulls = 0, doorPulls = 0, hinges = 0, drawerCount = 0;
   const drawerish = (k: Kind) => k === 'drawer' || k === 'false';
   layout.forEach((s, i) => {
@@ -222,7 +225,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
       const openW = (inW - (n - 1) * thk) / n;
       const bh = h < 7 ? d.smallBoxH : h < 10 ? Math.min(6, d.bigBoxH) : h < 13 ? d.bigBoxH : d.xlBoxH;
       out.drawers.push({ qty: n, kind: 'Drawer', w: openW - (d.boxDeduct - 2 * thk), dp: glide, h: bh, sec: tag });
-      if (n > 1) P(n - 1, 'Drawer Partition', D - d.backThk, h + gap, 'Vertical', d.caseMat);
+      if (n > 1) P(n - 1, 'Drawer Partition', inD, h + gap, 'Vertical', d.caseMat);
       drawerPulls += n; drawerCount += n;
     }
     if (s.kind === 'door') { doorPulls += n; hinges += n * (h > 60 ? 4 : h > 40 ? 3 : 2); }
@@ -244,7 +247,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   });
   if (!isWall && !isTall && layout.some(s => s.kind === 'drawer')) drawerStretch = Math.max(drawerStretch, 1);
   if (drawerStretch) P(drawerStretch, 'Drawer Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat);
-  if (fixedShelves) P(fixedShelves, 'Fixed Shelf', D - d.backThk, inW, 'Horizontal', d.caseMat);
+  if (fixedShelves) P(fixedShelves, 'Fixed Shelf', inD, inW, 'Horizontal', d.caseMat);
   if (shelves) P(shelves, 'Adjustable Shelf', shelfD, shelfW, 'Horizontal', d.caseMat);
   // Hardware
   const spec = `${d.glideSeries}${Math.round(glide * 25.4)}0B ${f(glide)}"`;
@@ -253,7 +256,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   if (drawerCount) out.hardware.push({ qty: drawerCount, item: 'Drawer Guide (pair)', spec });
   if (rollouts) {
     out.hardware.push({ qty: rollouts, item: 'Roll-out Guide (pair)', spec });
-    if (spacers) out.hardware.push({ qty: spacers, item: 'Roll-out Spacer', spec: `${f(d.rolloutSpacer)} x 3 x ${f(D - d.backThk - 1)}` });
+    if (spacers) out.hardware.push({ qty: spacers, item: 'Roll-out Spacer', spec: `${f(d.rolloutSpacer)} x 3 x ${f(inD - 1)}` });
   }
   if (hinges) out.hardware.push({ qty: hinges, item: 'Hinge', spec: d.hinge });
   if (shelves) out.hardware.push({ qty: shelves * 4, item: 'Shelf Pin', spec: '5mm' });
