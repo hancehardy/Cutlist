@@ -172,40 +172,6 @@ export function NestSheets({ r, f, headerTxt, footerTxt }: ReportCtx) {
   );
 }
 
-export function InstallSheet({ r, f, job, today, footerTxt }: ReportCtx) {
-  const inst = r.install, ls = inst.labelSize;
-  return (
-    <Card title={`Install Sheet — ${job.name}`} sub={`Drawn: ${job.drawn} · ${today}`}>
-      <svg viewBox={inst.viewBox} className="mt-4 block w-full">
-        <line x1={-2} y1={inst.floorY} x2={inst.totalW + 2} y2={inst.floorY} stroke="var(--color-ink)" strokeWidth={0.4} />
-        {inst.items.map((c, k) => {
-          const cb = r.cabs.find(x => x.idx === c.idx)!;
-          return (
-            <g key={k}>
-              <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="#fff" stroke="var(--color-ink)" strokeWidth={0.3} />
-              {elevShapes(cb, f).map(s => (
-                <rect key={s.tag} x={s.x + c.x} y={s.y + c.y} width={s.w} height={s.h} fill={faceFill(s.kind)} stroke="var(--color-ink)" strokeWidth={0.15} />
-              ))}
-              <rect x={c.x} y={c.y + c.h - c.toe} width={c.w} height={c.toe} fill="var(--color-line)" stroke="var(--color-ink)" strokeWidth={0.15} />
-              <text x={c.tx} y={c.y - ls * 1.6} textAnchor="middle" fontSize={ls} fontWeight={800} fill="var(--color-link)">{`#${c.idx} ${c.code}`}</text>
-              <text x={c.tx} y={c.y - ls * 0.4} textAnchor="middle" fontSize={ls} fill="var(--color-ink)">{c.wTxt}</text>
-            </g>
-          );
-        })}
-        <text x={inst.totalW / 2} y={inst.floorY + ls * 2.6} textAnchor="middle" fontSize={ls} fontWeight={700} fill="var(--color-ink)">{inst.totalTxt}</text>
-      </svg>
-      <div className="mt-3.5 flex flex-col gap-1.5 text-[13px] leading-[1.6] text-ink-2">
-        <div><strong>Construction.</strong> {r.d.caseMat} case &amp; slab fronts. {r.d.backMat} unfinished back. Toe kick is a separate assembly where called.</div>
-        <div><strong>Wall cabinets.</strong> Hung with top at {f(r.d.wallTop)}&quot; above finished floor.</div>
-        <div><strong>Drawers.</strong> {r.d.drawerStyle}, {r.d.glideSeries} glides sized to depth. {r.d.pull}.</div>
-        <div><strong>Grain on every part.</strong> Ends, back, stretchers, nailers and fronts = VERTICAL. Decks, tops and shelves = HORIZONTAL. Each front nested as its own part. Kerf {r.d.kerf}&quot;.</div>
-        <div className="text-muted">Rectangular nest only. Confirm parts, banding, and nest with mill before cutting.</div>
-      </div>
-      <Footer>{footerTxt}</Footer>
-    </Card>
-  );
-}
-
 export function HardwareReport({ r, headerTxt, footerTxt }: ReportCtx) {
   return (
     <Card title="Hardware List" sub={headerTxt}>
