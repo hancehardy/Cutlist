@@ -30,13 +30,13 @@ function Table({ cols, heads, rows, small, className = 'mt-3' }: {
   );
 }
 
-export function CutListReport({ r, headerTxt, footerTxt }: ReportCtx) {
+export function CutListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
   return (
     <>
       {r.materials.map(m => (
         <Card key={m.name} title="Panel Stock Cut List" sub={headerTxt}>
           <div className="mt-3.5 text-base font-bold text-link">{m.name}</div>
-          <div className="mt-0.5 text-xs text-muted">Grain called on every part. Vertical = along Length. Kerf {r.d.kerf}&quot;. Band blank — mill to confirm L/R/T/B.</div>
+          <div className="mt-0.5 text-xs text-muted">Grain called on every part. Vertical = along Length. Kerf {f(r.d.kerf)}&quot;. Band blank — mill to confirm L/R/T/B.</div>
           <Table cols="44px minmax(120px,2fr) minmax(110px,1.4fr) minmax(90px,1.2fr) minmax(80px,1fr)"
             heads={['Qty', 'Description', 'Width x Length', 'Grain', 'Cabinet (Qty)']}
             rows={m.rows.map((row, i) => ({ key: i, cells: [
@@ -183,7 +183,7 @@ export function OptimizeSheets({ r, f, headerTxt, footerTxt }: ReportCtx) {
             })}
           </svg>
           <div className="mt-2 text-xs text-muted">
-            Panel saw: rip full-length strips along the {f(n.L)}&quot; grain, then crosscut each strip. Sheet {f(n.L)} x {f(n.W)}, kerf {r.d.kerf}&quot;
+            Panel saw: rip full-length strips along the {f(n.L)}&quot; grain, then crosscut each strip. Sheet {f(n.L)} x {f(n.W)}, kerf {f(r.d.kerf)}&quot;
             {n.trim > 0 ? `, ${f(n.trim)}" trimmed off one long and one short edge (grey)` : ''}. Parts are never rotated: → = grain runs with the sheet, ↕ = across. {s.yieldTxt}. Unshaded = offcut.
           </div>
           <div className="mt-4 text-[13px] font-bold text-link">Cut sequence</div>

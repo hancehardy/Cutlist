@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DimFormat } from '@/lib/engine';
 import type { JobDoc, JobSummary } from '@/lib/job';
-import type { SaveState } from './CutlistApp';
+import { SaveIndicator, type SaveState } from './useAutosave';
 
 interface Props {
   jobId: string;
@@ -13,11 +13,6 @@ interface Props {
   onFormat: (f: DimFormat) => void;
 }
 
-const SAVE_TXT: Record<SaveState, [string, string]> = {
-  saved: ['Saved', 'text-muted'],
-  saving: ['Saving…', 'text-muted'],
-  error: ['Not saved — retrying on next edit', 'text-danger'],
-};
 const action = 'rounded-full border border-rule bg-white px-3 py-1.5 text-xs font-bold text-ink hover:border-ink';
 
 const slug = (s: string) => s.trim().replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '') || 'job';
@@ -72,14 +67,13 @@ export function JobsMenu({ jobId, doc, initialJobs, saveState, onOpen, onFormat 
     window.location.href = '/';
   };
 
-  const [saveTxt, saveCls] = SAVE_TXT[saveState];
   return (
     <div ref={box} className="relative flex items-center gap-2.5">
       <button onClick={() => setOpen(o => !o)} aria-expanded={open}
         className={`flex items-center gap-1.5 rounded-full border bg-white px-3 py-1 text-[13px] font-bold text-ink hover:border-ink ${open ? 'border-accent' : 'border-rule'}`}>
         Jobs <span className="text-[10px] text-muted">▾</span>
       </button>
-      <div className={`text-xs ${saveCls}`} aria-live="polite">{saveTxt}</div>
+      <SaveIndicator state={saveState} />
       {open && (
         <div className="card absolute top-full left-0 z-20 mt-2 flex w-[340px] max-w-[calc(100vw-40px)] flex-col gap-3 p-3.5 shadow-[0_1px_2px_rgba(11,11,12,0.08),0_8px_24px_rgba(11,11,12,0.12)]">
           <div className="eyebrow">Jobs</div>

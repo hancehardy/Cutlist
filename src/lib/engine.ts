@@ -88,23 +88,36 @@ type DefaultsShape = typeof DEFAULTS;
 export type DefaultKey = keyof DefaultsShape;
 export type RawDefaults = Partial<Record<DefaultKey, string>>;
 
-export const DEFAULT_FIELDS: [DefaultKey, string][] = [
-  ['caseThk', 'Case thickness'], ['backThk', 'Back thickness'], ['backGroove', 'Back groove depth'], ['backInset', 'Back inset from rear edge'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'],
+/** Construction rules a method sets. Thickness and sheet size come from the materials, kerf and edge trim from the shop's saw settings. */
+export const RULE_FIELDS: [DefaultKey, string][] = [
+  ['backGroove', 'Back groove depth'], ['backInset', 'Back inset from rear edge'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'],
   ['frontGap', 'Gap between fronts'], ['sideReveal', 'Side reveal (each)'], ['topReveal', 'Top reveal'], ['bottomReveal', 'Bottom reveal'],
   ['smallFront', 'Top drawer front height'], ['boxDeduct', 'Drawer box width deduct'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
   ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
   ['glideDeduct', 'Glide deduct from depth'], ['doorSplit', 'Two doors above width'], ['tallLowerDoor', 'Tall lower door height'],
-  ['shelfSetback', 'Shelf setback'], ['kerf', 'Kerf'], ['sheetL', 'Sheet length'], ['sheetW', 'Sheet width'], ['edgeTrim', 'Edge trim (1 long + 1 short edge)'],
+  ['shelfSetback', 'Shelf setback'],
 ];
-export const DEFAULT_TEXT: [DefaultKey, string][] = [
-  ['caseMat', 'Case material'], ['backMat', 'Back material'], ['frontMat', 'Front material'],
+export const RULE_KEYS = new Set<DefaultKey>(RULE_FIELDS.map(f => f[0]));
+/** Shop-wide panel saw settings. */
+export const SAW_FIELDS: [DefaultKey, string][] = [['kerf', 'Kerf'], ['edgeTrim', 'Edge trim (1 long + 1 short edge)']];
+/** Hardware picked per job. */
+export const HARDWARE_FIELDS: [DefaultKey, string][] = [
   ['glideSeries', 'Glide series'], ['glideLens', 'Glide lengths'], ['pull', 'Pull'], ['hinge', 'Hinge'], ['drawerStyle', 'Drawer style'], ['doorStyle', 'Door style'],
 ];
-const NUM_KEYS = new Set<DefaultKey>(DEFAULT_FIELDS.map(f => f[0]));
+const NUM_KEYS = new Set<DefaultKey>((Object.keys(DEFAULTS) as DefaultKey[]).filter(k => typeof DEFAULTS[k] === 'number'));
 
-export type Resolved = { [K in DefaultKey]: DefaultsShape[K] } & { glideLenList: number[] };
+/** A sheet good: name, thickness and stock sheet size, in inches as typed. */
+export interface Material { name: string; thk: string; w: string; l: string }
+export type MatSlot = 'case' | 'back' | 'front';
+export const MAT_SLOTS: [MatSlot, string][] = [['case', 'Case material'], ['back', 'Back material'], ['front', 'Front material']];
+/** The materials a job is built from: thickness drives the case and back rules, sheet size drives the saw plan. */
+export type JobMaterials = Record<MatSlot, Material>;
 
-export function resolveDefaults(raw?: RawDefaults | null): Resolved {
+export type Resolved = { [K in DefaultKey]: DefaultsShape[K] } & { glideLenList: number[]; sheets: Record<string, { L: number; W: number }> };
+
+const posDim = (v: unknown, fallback: number) => { const n = parseDim(v); return isNaN(n) || n <= 0 ? fallback : n; };
+
+export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMaterials | null): Resolved {
   const d = {} as Record<string, unknown>;
   for (const k of Object.keys(DEFAULTS) as DefaultKey[]) {
     const v = raw?.[k] ?? DEFAULTS[k];
@@ -112,6 +125,19 @@ export function resolveDefaults(raw?: RawDefaults | null): Resolved {
   }
   const r = d as Resolved;
   r.glideLenList = String(r.glideLens).split(/[,\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b);
+  r.sheets = {};
+  if (materials) {
+    r.caseMat = materials.case.name.trim() || DEFAULTS.caseMat;
+    r.backMat = materials.back.name.trim() || DEFAULTS.backMat;
+    r.frontMat = materials.front.name.trim() || DEFAULTS.frontMat;
+    r.caseThk = posDim(materials.case.thk, DEFAULTS.caseThk);
+    r.backThk = posDim(materials.back.thk, DEFAULTS.backThk);
+    // Sheet size per material name; when two slots share a name the case wins (it has the most parts).
+    for (const [slot, name] of [['case', r.caseMat], ['back', r.backMat], ['front', r.frontMat]] as [MatSlot, string][]) {
+      const m = materials[slot];
+      if (!(name in r.sheets)) r.sheets[name] = { L: posDim(m.l, r.sheetL), W: posDim(m.w, r.sheetW) };
+    }
+  }
   return r;
 }
 
@@ -270,7 +296,7 @@ function glideLen(D: number, d: Resolved) {
 }
 
 export interface MaterialRow { desc: string; w: number; l: number; grain: Grain; qty: number; cabs: string[]; size: string; grainTxt: string; cabsTxt: string }
-export interface Material { name: string; rows: MaterialRow[]; rips: string }
+export interface MaterialGroup { name: string; rows: MaterialRow[]; rips: string }
 export interface DoorRow { w: number; l: number; type: 'DR' | 'FF' | 'DF'; qty: number; cabs: string[]; size: string; cabsTxt: string }
 export interface DrawerRow extends DrawerBox { cabs: string[]; wTxt: string; dTxt: string; hTxt: string; cabsTxt: string }
 /** A part placed on a sheet. Drawing coordinates: x along the sheet length (grain), y across its width. */
@@ -286,16 +312,16 @@ export interface SawCut { n: number; kind: 'trim' | 'rip' | 'cross' | 'recut'; x
 export interface SawSheet { title: string; yieldTxt: string; parts: SawPart[]; cuts: SawCut[]; strips: { y: number; w: number }[] }
 export interface SawPlan { name: string; L: number; W: number; trim: number; oversize: { name: string; along: number; across: number }[]; sheets: SawSheet[] }
 export interface JobResult {
-  d: Resolved; cabs: BuiltCabinet[]; materials: Material[]; doors: DoorRow[]; drawers: DrawerRow[];
+  d: Resolved; cabs: BuiltCabinet[]; materials: MaterialGroup[]; doors: DoorRow[]; drawers: DrawerRow[];
   hardware: HardwareItem[]; sawPlans: SawPlan[];
   summary: { nParts: number; nFronts: number; nDrawers: number; sheets: number };
 }
 
 const cabRef = (idx: number, q: number) => (q > 1 ? `${idx} (${q})` : `${idx}`);
 
-export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction'): JobResult {
+export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null): JobResult {
   const f = makeFmt(mode);
-  const d = resolveDefaults(rawDefaults);
+  const d = resolveDefaults(rawDefaults, jobMaterials);
   const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f));
   const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number> }> = {};
   const key = (p: Part) => `${p.desc}|${p.w}|${p.l}|${p.grain}`;
@@ -310,7 +336,7 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
     }
   }
   const order = [d.backMat, d.caseMat, d.frontMat];
-  const materials: Material[] = Object.values(byMat).sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name)).map(m => ({
+  const materials: MaterialGroup[] = Object.values(byMat).sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name)).map(m => ({
     name: m.name,
     rows: Object.values(m.rows).sort((a, b) => b.w - a.w || b.l - a.l).map(r => ({
       ...r, size: `${f(r.w)} x ${f(r.l)}`, grainTxt: r.grain === 'Vertical' ? 'Vertical (along L)' : 'Horizontal (along W)', cabsTxt: r.cabs.join(', '),
@@ -351,7 +377,8 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
 // Panel saw optimizer (two-stage guillotine). Each sheet is trimmed on one long and one short
 // edge, ripped into full-length strips along the grain, then each strip is crosscut into parts.
 // Parts are never rotated. A part narrower than its strip gets one extra rip down to width.
-function sawPlan(m: Material, built: BuiltCabinet[], d: Resolved, f: Fmt): SawPlan {
+// Each material is planned on its own stock sheet size.
+function sawPlan(m: MaterialGroup, built: BuiltCabinet[], d: Resolved, f: Fmt): SawPlan {
   type Item = { id: number; name: string; along: number; across: number; grain: Grain; cab: number };
   const items: Item[] = [];
   let n = 0;
@@ -365,7 +392,8 @@ function sawPlan(m: Material, built: BuiltCabinet[], d: Resolved, f: Fmt): SawPl
       }
     }
   }
-  const L = d.sheetL, W = d.sheetW, k = d.kerf, t = Math.max(0, d.edgeTrim);
+  const sheet = d.sheets[m.name] ?? { L: d.sheetL, W: d.sheetW };
+  const L = sheet.L, W = sheet.W, k = d.kerf, t = Math.max(0, d.edgeTrim);
   const UL = L - t, UW = W - t, eps = 1e-6;
   const oversize = items.filter(it => it.along > UL + eps || it.across > UW + eps);
   const fits = items.filter(it => !oversize.includes(it));

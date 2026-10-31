@@ -4,27 +4,42 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { type JobDoc, type JobSummary, normalizeJobDoc, sampleJob } from './job';
+import { type ShopConfig, defaultShopConfig, normalizeShopConfig } from './shop';
 
 const DB_PATH = process.env.CUTLIST_DB || path.join(process.cwd(), 'data', 'cutlist.db');
 
-// Reuse one connection across hot reloads in dev.
-const g = globalThis as unknown as { __cutlistDb?: Database.Database };
-
-function db() {
-  if (g.__cutlistDb) return g.__cutlistDb;
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const conn = new Database(DB_PATH);
-  conn.pragma('journal_mode = WAL');
-  conn.exec(`CREATE TABLE IF NOT EXISTS jobs (
+// Bump when a table is added so a connection kept alive across dev hot reloads picks it up.
+const SCHEMA = 2;
+const SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     client TEXT NOT NULL DEFAULT '',
     data TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
-  )`);
-  const { n } = conn.prepare('SELECT COUNT(*) AS n FROM jobs').get() as { n: number };
+  );
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`;
+
+// Reuse one connection across hot reloads in dev.
+const g = globalThis as unknown as { __cutlistDb?: Database.Database; __cutlistSchema?: number };
+
+function db() {
+  if (g.__cutlistDb && g.__cutlistSchema === SCHEMA) return g.__cutlistDb;
+  let conn = g.__cutlistDb;
+  if (!conn) {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    conn = new Database(DB_PATH);
+    conn.pragma('journal_mode = WAL');
+  }
+  conn.exec(SCHEMA_SQL);
   g.__cutlistDb = conn;
+  g.__cutlistSchema = SCHEMA;
+  const { n } = conn.prepare('SELECT COUNT(*) AS n FROM jobs').get() as { n: number };
   if (n === 0) createJob(sampleJob());
   return conn;
 }
@@ -39,7 +54,24 @@ export function listJobs(): JobSummary[] {
 export function getJob(id: string): { id: string; doc: JobDoc; updatedAt: string } | null {
   const r = db().prepare('SELECT id, data, updated_at FROM jobs WHERE id = ?').get(id) as Row | undefined;
   if (!r) return null;
-  return { id: r.id, doc: normalizeJobDoc(JSON.parse(r.data)), updatedAt: r.updated_at };
+  return { id: r.id, doc: normalizeJobDoc(JSON.parse(r.data), getShopConfig()), updatedAt: r.updated_at };
+}
+
+const SHOP_KEY = 'shop';
+
+/** Shop settings from the Admin page; the built-in defaults until they are first saved. */
+export function getShopConfig(): ShopConfig {
+  const r = db().prepare('SELECT data FROM settings WHERE key = ?').get(SHOP_KEY) as { data: string } | undefined;
+  if (!r) return defaultShopConfig();
+  try { return normalizeShopConfig(JSON.parse(r.data)); } catch { return defaultShopConfig(); }
+}
+
+export function saveShopConfig(doc: ShopConfig): string {
+  const now = new Date().toISOString();
+  db().prepare(`INSERT INTO settings (key, data, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
+    .run(SHOP_KEY, JSON.stringify(doc), now);
+  return now;
 }
 
 export function createJob(doc: JobDoc): { id: string; doc: JobDoc; updatedAt: string } {

@@ -1,0 +1,65 @@
+'use client';
+import { useState } from 'react';
+import Link from 'next/link';
+import { defaultShopConfig, type ShopConfig } from '@/lib/shop';
+import { SaveIndicator, useAutosave } from '../useAutosave';
+import { MethodsEditor } from './MethodsEditor';
+import { OptionsEditor } from './OptionsEditor';
+
+type Tab = 'materials' | 'methods';
+const TABS: [Tab, string][] = [['materials', 'Materials & hardware'], ['methods', 'Construction methods']];
+
+export type Update = (fn: (c: ShopConfig) => ShopConfig) => void;
+
+/** Admin page: shop-wide choices and construction methods, autosaved to /api/shop. */
+export function AdminApp({ initial }: { initial: ShopConfig }) {
+  const [cfg, setCfg] = useState(initial);
+  const [tab, setTab] = useState<Tab>('materials');
+  const save = useAutosave('/api/shop', cfg);
+  const update: Update = fn => setCfg(fn);
+
+  const restore = () => {
+    if (!window.confirm('Restore the built-in materials, choices, saw settings and method? Everything on this page is replaced. Jobs keep their own materials and rules; the saw settings apply to all of them.')) return;
+    setCfg(defaultShopConfig());
+  };
+
+  return (
+    <div className="box-border flex min-h-screen flex-col gap-5 p-5">
+      <div className="mx-auto flex w-full max-w-[880px] flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <img src="/assets/logo-mark.png" alt="" className="h-[34px] w-[34px] object-contain" />
+          <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
+          <div className="rounded-full bg-ink px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.12em] text-white uppercase">Admin</div>
+          <SaveIndicator state={save.state} />
+          <Link href="/" className="ml-auto text-[13px] font-bold">← Back to jobs</Link>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <div className="eyebrow">Shop settings</div>
+          <div className="text-2xl font-extrabold tracking-[-0.01em]">Materials, hardware and construction methods</div>
+          <div className="text-sm text-ink-3">
+            What the job setup page offers. Materials, hardware and methods are copied into a job when it is set up; the panel saw settings apply to every job right away.
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1 border-b border-line" role="tablist">
+          {TABS.map(([k, label]) => (
+            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+              className={`-mb-px border-0 border-b-2 bg-transparent px-3 py-2 text-sm font-bold hover:text-ink ${tab === k ? 'border-accent text-ink' : 'border-transparent text-muted'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'materials' ? <OptionsEditor cfg={cfg} update={update} /> : <MethodsEditor cfg={cfg} update={update} />}
+
+        <div className="flex items-center gap-3 border-t border-line-2 pt-4 pb-6 text-xs text-muted">
+          <div>Choices and methods are shared by everyone using this database.</div>
+          <button onClick={restore} className="ml-auto border-none bg-transparent p-0 text-xs font-semibold text-muted hover:text-danger hover:underline">
+            Restore built-in defaults
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

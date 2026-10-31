@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildJob, fmt, newSection, parseDim } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
-import { isCustomized, presetFor } from './presets';
+import { PRESETS, isCustomized, type Preset } from './presets';
+import { defaultShopConfig } from './shop';
 
 describe('parseDim / fmt', () => {
   it('parses fractions, mixed numbers and decimals', () => {
@@ -136,19 +137,52 @@ describe('job setup', () => {
     expect(isCustomized(doc.method, normalizeJobDoc({ cabs: [], defaults: { wallTop: '84' } }).defaults)).toBe(false);
   });
 
-  it('falls back to the standard preset for unknown methods', () => {
-    expect(normalizeJobDoc({ cabs: [], method: 'face-frame' }).method).toBe('frameless-melamine');
-    expect(normalizeJobDoc({ cabs: [], method: 'frameless-ply' }).method).toBe('frameless-ply');
+  const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
+  const shop = { ...defaultShopConfig(), presets: [PRESETS[0], thin] };
+
+  it('falls back to the standard method for unknown methods', () => {
+    expect(normalizeJobDoc({ cabs: [], method: 'face-frame' }).method).toBe('frameless');
+    expect(normalizeJobDoc({ cabs: [], method: 'thin' }, shop).method).toBe('thin');
+    expect(normalizeJobDoc({ cabs: [], method: 'thin' }).method).toBe('frameless');
   });
 
-  it('detects edits away from the chosen preset', () => {
-    expect(isCustomized('frameless-melamine', {})).toBe(false);
-    expect(isCustomized('frameless-ply', { ...presetFor('frameless-ply').values })).toBe(false);
-    expect(isCustomized('frameless-ply', {})).toBe(true);
-    expect(isCustomized('frameless-melamine', { pull: 'Knob' })).toBe(true);
+  it('detects edits to the construction rules, and only those', () => {
+    expect(isCustomized('frameless', {})).toBe(false);
+    expect(isCustomized('thin', { ...thin.values }, shop.presets)).toBe(false);
+    expect(isCustomized('thin', {}, shop.presets)).toBe(true);
+    // Hardware is not part of a method.
+    expect(isCustomized('frameless', { pull: 'Knob' })).toBe(false);
     // Typing the shop-standard value back in is not a customization.
-    expect(isCustomized('frameless-melamine', { kerf: '0.187', caseThk: '3/4' })).toBe(false);
-    expect(isCustomized('frameless-melamine', { caseThk: '5/8' })).toBe(true);
+    expect(isCustomized('frameless', { stretcherW: '4' })).toBe(false);
+    expect(isCustomized('frameless', { stretcherW: '3' })).toBe(true);
+  });
+});
+
+describe('materials', () => {
+  const cab = { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' };
+  const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
+
+  it('takes case and back thickness from the materials', () => {
+    const job = buildJob([cab], {}, 'fraction', { case: M('Ply', '0.71'), back: M('Thin', '1/2'), front: M('Ply', '0.71') });
+    expect([job.d.caseThk, job.d.backThk]).toEqual([0.71, 0.5]);
+    expect(job.cabs[0].parts.find(p => p.desc === 'Deck')!.l).toBeCloseTo(15 - 2 * 0.71);
+    expect(job.materials.map(m => m.name)).toEqual(['Thin', 'Ply']);
+    // Bad dimensions fall back to the app defaults.
+    expect(buildJob([cab], {}, 'fraction', { case: M('Ply', 'x'), back: M('Thin', '0'), front: M('Ply', '') }).d.caseThk).toBe(0.75);
+  });
+
+  it('plans each material on its own sheet; the case wins a name clash', () => {
+    const job = buildJob([cab], {}, 'fraction', { case: M('A', '3/4'), back: M('B', '1/4', '60', '60'), front: M('A', '3/4', '48', '96') });
+    const plan = (n: string) => job.sawPlans.find(p => p.name === n)!;
+    expect([plan('B').L, plan('B').W]).toEqual([60, 60]);
+    expect([plan('A').L, plan('A').W]).toEqual([97, 49]);
+    expect(plan('B').sheets[0].title).toContain('(60 x 60)');
+  });
+
+  it('means 3/4 and 1/4 melamine on 49 x 97 when a job has none', () => {
+    const job = buildJob([cab], {});
+    expect(job.d.sheets).toEqual({});
+    expect(job.sawPlans.map(p => [p.name, p.L, p.W])).toEqual([['1/4 1s Melamine', 97, 49], ['3/4 2s Melamine', 97, 49]]);
   });
 });
 

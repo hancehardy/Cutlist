@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'vitest';
+import type { Material } from './engine';
+import { emptyJob, normalizeJobDoc } from './job';
+import { OPTIONS, PRESETS, isCustomized, presetFor, type Preset } from './presets';
+import { BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
+
+const M = (name: string, thk: string, w = '49', l = '97'): Material => ({ name, thk, w, l });
+const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
+
+describe('shop config', () => {
+  it('starts from the built-in materials, choices, saw settings and method', () => {
+    const c = defaultShopConfig();
+    expect(c.presets.map(p => p.key)).toEqual(['frameless']);
+    expect(c.materials).toHaveLength(9);
+    expect(c.materials[0]).toEqual(M('3/4 2s Melamine', '3/4'));
+    expect(c.saw).toEqual({ kerf: '3/16', edgeTrim: '1/4' });
+    for (const k of OPTION_KEYS) expect(c.options[k]).toEqual(OPTIONS[k]);
+    expect('caseMat' in c.options).toBe(false);
+    // Copies, not the built-in arrays.
+    c.options.pull!.push('x'); c.materials[0].name = 'x';
+    expect(OPTIONS.pull).not.toContain('x');
+    expect(BUILTIN_MATERIALS[0].name).toBe('3/4 2s Melamine');
+  });
+
+  it('cleans up choices: trims, drops blanks and duplicates, keeps order', () => {
+    const c = normalizeShopConfig({ options: { pull: [' Knob', '', 'Knob', 7, null, 'Bar'] } });
+    expect(c.options.pull).toEqual(['Knob', '7', 'Bar']);
+    // Fields not in the document keep the built-in list; an explicit empty list stays empty.
+    expect(c.options.hinge).toEqual(OPTIONS.hinge);
+    expect(normalizeShopConfig({ options: { pull: [] } }).options.pull).toEqual([]);
+    expect(optionsFor({ pull: [] }, 'pull')).toBeUndefined();
+    expect(optionsFor({ pull: ['Knob'] }, 'pull')).toEqual(['Knob']);
+  });
+
+  it('cleans up materials: name required and unique, bad dimensions fall back', () => {
+    const c = normalizeShopConfig({ materials: [
+      { name: ' Ply ', thk: 0.71, w: '48', l: '96' }, { name: 'Ply', thk: '1' }, { name: '', thk: '1' }, { name: 'Odd', thk: 'x', w: -1, l: '' }, 'junk',
+    ] });
+    expect(c.materials).toEqual([M('Ply', '0.71', '48', '96'), M('Odd', '3/4')]);
+    expect(normalizeShopConfig({ materials: [] }).materials).toEqual(BUILTIN_MATERIALS);
+  });
+
+  it("seeds the table from a version-1 document's material dropdowns", () => {
+    const c = normalizeShopConfig({ version: 1, options: { caseMat: ['3/4 Baltic Birch', '5/8 Particle'], backMat: ['1/4 1s Melamine', '3/4 Baltic Birch'] } });
+    expect(c.materials).toEqual([M('3/4 Baltic Birch', '3/4', '60', '60'), M('5/8 Particle', '5/8'), M('1/4 1s Melamine', '1/4')]);
+  });
+
+  it('keeps only construction rules in a method; keys are unique slugs', () => {
+    const c = normalizeShopConfig({ presets: [
+      { key: 'Shop Ply!', label: ' Ply ', blurb: 'x', values: { caseMat: 'A', wallTop: '84', caseThk: 0.71, pull: '  ', sheetL: 120, kerf: '1/8', stretcherW: 3 } },
+      { key: 'shop-ply', label: 'Ply 2' },
+      { label: '' },
+      { label: 'No key' },
+    ] });
+    expect(c.presets.map(p => [p.key, p.label])).toEqual([['shop-ply', 'Ply'], ['shop-ply-2', 'Ply 2'], ['no-key', 'No key']]);
+    expect(c.presets[0].values).toEqual({ stretcherW: '3' });
+  });
+
+  it('falls back to the built-in method and saw settings when nothing valid is given', () => {
+    expect(normalizeShopConfig({ presets: [] }).presets).toEqual(PRESETS);
+    expect(normalizeShopConfig({ presets: [{ label: '' }] }).presets).toEqual(PRESETS);
+    expect(normalizeShopConfig({ saw: { kerf: '1/8', edgeTrim: 'no' } }).saw).toEqual({ kerf: '1/8', edgeTrim: '1/4' });
+    expect(normalizeShopConfig({ saw: { edgeTrim: '0' } }).saw).toEqual({ kerf: '3/16', edgeTrim: '0' });
+    expect(() => normalizeShopConfig(null)).toThrow();
+  });
+
+  it('makes unique keys', () => {
+    expect(presetKey('Frameless – Melamine')).toBe('frameless-melamine');
+    expect(presetKey('Frameless – Melamine', ['frameless-melamine'])).toBe('frameless-melamine-2');
+    expect(presetKey('!!!')).toBe('method');
+  });
+
+  it('compares materials by value', () => {
+    expect(sameMaterial(M('A', '3/4'), M('A ', '0.75'))).toBe(true);
+    expect(sameMaterial(M('A', '3/4'), M('A', '3/4', '60', '60'))).toBe(false);
+  });
+});
+
+describe('jobs on shop settings', () => {
+  const shop: ShopConfig = {
+    ...defaultShopConfig(),
+    presets: [thin, PRESETS[0]],
+    materials: [M('Ply', '0.71'), M('Back', '1/4'), M('MDF', '3/4')],
+    options: { ...defaultShopConfig().options, pull: ['Knob'] },
+  };
+
+  it('resolves methods against the shop list, defaulting to its first method', () => {
+    expect(presetFor('thin', shop.presets)).toBe(thin);
+    expect(presetFor('gone', shop.presets)).toBe(thin);
+    expect(normalizeJobDoc({ cabs: [], method: 'thin' }, shop).method).toBe('thin');
+    expect(normalizeJobDoc({ cabs: [], method: 'gone' }, shop).method).toBe('thin');
+  });
+
+  it('starts a blank job on the default method, materials and first hardware choices', () => {
+    const doc = emptyJob(shop);
+    expect(doc.method).toBe('thin');
+    expect(doc.defaults).toMatchObject({ stretcherW: '3', pull: 'Knob', hinge: OPTIONS.hinge![0] });
+    // First material for the case and fronts, thinnest for the back.
+    expect(doc.materials).toEqual({ case: M('Ply', '0.71'), back: M('Back', '1/4'), front: M('Ply', '0.71') });
+    expect(isCustomized(doc.method, doc.defaults, shop.presets)).toBe(false);
+    expect(isCustomized(doc.method, { ...doc.defaults, stretcherW: '4' }, shop.presets)).toBe(true);
+    expect(defaultJobMaterials([]).case.name).toBe('3/4 2s Melamine');
+  });
+
+  it('keeps a job\'s own material copies and rebuilds incomplete ones', () => {
+    const m = { case: M('X', '5/8', '48', '96'), back: M('Y', '1/8'), front: M('Z', '3/4') };
+    expect(normalizeJobDoc({ cabs: [], materials: m }, shop).materials).toEqual(m);
+    expect(normalizeJobDoc({ cabs: [], materials: { case: m.case } }, shop).materials.case.name).toBe('3/4 2s Melamine');
+  });
+
+  it('migrates a job saved before materials were part of it', () => {
+    const doc = normalizeJobDoc({ cabs: [], defaults: {
+      caseMat: 'Ply', backMat: '1/4 1s Melamine', frontMat: 'New', caseThk: '0.71', sheetL: '120', kerf: '1/8', edgeTrim: '0', pull: 'Knob', stretcherW: '3',
+    } }, shop);
+    expect(doc.materials).toEqual({
+      case: M('Ply', '0.71', '49', '120'),
+      back: M('1/4 1s Melamine', '1/4', '49', '120'),
+      front: M('New', '0.71', '49', '120'),
+    });
+    // Material, sheet and saw keys leave the job's rules; hardware and real rules stay.
+    expect(doc.defaults).toEqual({ pull: 'Knob', stretcherW: '3' });
+    // A job with no old material keys gets the app's melamine defaults.
+    expect(normalizeJobDoc({ cabs: [] }).materials.back).toEqual(M('1/4 1s Melamine', '1/4'));
+  });
+});

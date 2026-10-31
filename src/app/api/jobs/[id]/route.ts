@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteJob, getJob, updateJob } from '@/lib/db';
+import { deleteJob, getJob, getShopConfig, updateJob } from '@/lib/db';
 import { normalizeJobDoc } from '@/lib/job';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function PUT(req: Request, { params }: Ctx) {
   const { id } = await params;
   try {
-    const doc = normalizeJobDoc(await req.json());
+    const doc = normalizeJobDoc(await req.json(), getShopConfig());
     const updatedAt = updateJob(id, doc);
     return updatedAt ? NextResponse.json({ id, updatedAt }) : notFound();
   } catch (e) {

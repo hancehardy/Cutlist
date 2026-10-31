@@ -1,14 +1,14 @@
 'use client';
 import type { RawDefaults, Resolved } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
-import { isCustomized, presetFor } from '@/lib/presets';
+import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 
-interface Props { job: JobInfo; method: string; defaults: RawDefaults; d: Resolved; onEdit: () => void }
+interface Props { job: JobInfo; method: string; defaults: RawDefaults; presets: Preset[]; d: Resolved; onEdit: () => void }
 
 /** Compact job + construction card at the top of the item entry page. */
-export function JobSummaryCard({ job, method, defaults, d, onEdit }: Props) {
+export function JobSummaryCard({ job, method, defaults, presets, d, onEdit }: Props) {
   const meta = [job.client, job.catalog, job.drawn && `Drawn by ${job.drawn}`].filter(Boolean).join(' · ');
-  const custom = isCustomized(method, defaults);
+  const custom = isCustomized(method, defaults, presets);
   return (
     <div className="card flex flex-col gap-2 px-[18px] py-3.5">
       <div className="flex items-baseline gap-2.5">
@@ -18,7 +18,7 @@ export function JobSummaryCard({ job, method, defaults, d, onEdit }: Props) {
       </div>
       <div className="flex flex-col gap-0.5 text-xs leading-[1.5] text-ink-3">
         <div>
-          <span className="eyebrow mr-2 text-[10px]">{presetFor(method).label}{custom ? ' · customized' : ''}</span>
+          <span className="eyebrow mr-2 text-[10px]">{presetFor(method, presets).label}{custom ? ' · customized' : ''}</span>
         </div>
         <div>Case {d.caseMat} · Back {d.backMat} · Fronts {d.frontMat} · {d.doorStyle}</div>
         <div>{d.drawerStyle} · {d.glideSeries} glides · {d.pull} · {d.hinge}</div>

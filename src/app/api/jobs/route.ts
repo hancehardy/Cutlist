@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createJob, listJobs } from '@/lib/db';
+import { createJob, getShopConfig, listJobs } from '@/lib/db';
 import { emptyJob, normalizeJobDoc, sampleJob } from '@/lib/job';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,8 @@ export function GET() {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   try {
-    const doc = body?.doc ? normalizeJobDoc(body.doc) : body?.sample ? sampleJob() : emptyJob();
+    const shop = getShopConfig();
+    const doc = body?.doc ? normalizeJobDoc(body.doc, shop) : body?.sample ? sampleJob() : emptyJob(shop);
     return NextResponse.json(createJob(doc), { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

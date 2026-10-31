@@ -1,69 +1,25 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { DEFAULT_FIELDS, TYPES, buildJob, configsFor, makeFmt, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
+import { RULE_FIELDS, TYPES, buildJob, configsFor, makeFmt, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
 import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
+import type { ShopConfig } from '@/lib/shop';
 import { CabinetList } from './CabinetList';
 import { Configurator } from './Configurator';
 import { JobSetup } from './JobSetup';
 import { JobSummaryCard } from './JobSummaryCard';
 import { presetFor } from '@/lib/presets';
 import { JobsMenu } from './JobsMenu';
+import { useAutosave } from './useAutosave';
 import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, type ReportCtx } from './Reports';
 
 type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'hardware';
 const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['hardware', 'Hardware']];
-export type SaveState = 'saved' | 'saving' | 'error';
 
-interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[] }
+interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; shop: ShopConfig }
 
-/** Debounced autosave to SQLite. Saves are chained so they land in order. */
-function useAutosave(jobId: string, doc: JobDoc) {
-  const [state, setState] = useState<SaveState>('saved');
-  const pending = useRef<JobDoc | null>(null);
-  const chain = useRef(Promise.resolve());
-  const first = useRef(true);
-
-  const flush = useCallback(() => {
-    chain.current = chain.current.then(async () => {
-      const d = pending.current;
-      if (!d) return;
-      pending.current = null;
-      try {
-        const res = await fetch(`/api/jobs/${jobId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
-        if (!res.ok) throw new Error(String(res.status));
-        setState(pending.current ? 'saving' : 'saved');
-      } catch {
-        pending.current = pending.current ?? d;
-        setState('error');
-      }
-    });
-    return chain.current;
-  }, [jobId]);
-
-  useEffect(() => {
-    if (first.current) { first.current = false; return; }
-    pending.current = doc;
-    setState('saving');
-    const t = setTimeout(flush, 600);
-    return () => clearTimeout(t);
-  }, [doc, flush]);
-
-  // Don't lose the last keystrokes when the tab closes.
-  useEffect(() => {
-    const onHide = () => {
-      if (!pending.current) return;
-      fetch(`/api/jobs/${jobId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pending.current), keepalive: true });
-      pending.current = null;
-    };
-    window.addEventListener('pagehide', onHide);
-    return () => window.removeEventListener('pagehide', onHide);
-  }, [jobId]);
-
-  return { state, flush };
-}
-
-export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
+export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
   const [tab, setTab] = useState<Tab>('config');
@@ -74,7 +30,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
   const [view, setView] = useState<'setup' | 'items'>(initialDoc.setupDone ? 'items' : 'setup');
   const [printing, setPrinting] = useState(false);
   const [today, setToday] = useState('');
-  const save = useAutosave(jobId, doc);
+  const save = useAutosave(`/api/jobs/${jobId}`, doc);
 
   // Date is locale/timezone dependent, so render it on the client only.
   useEffect(() => setToday(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })), []);
@@ -85,8 +41,19 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
   }, []);
 
   const f = useMemo(() => makeFmt(doc.dimFormat), [doc.dimFormat]);
-  const result = useMemo(() => buildJob(doc.cabs, doc.defaults, doc.dimFormat), [doc.cabs, doc.defaults, doc.dimFormat]);
+  // Saw settings are shop-wide and live, so they overlay the job's rules at build time.
+  const result = useMemo(
+    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials),
+    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, shop.saw],
+  );
   const { cabs, job } = doc;
+
+  // Put the construction rules on a method's values; materials and hardware are untouched.
+  const withRules = (d: JobDoc, key: string): JobDoc => {
+    const next = { ...d.defaults }, p = presetFor(key, shop.presets).values;
+    for (const [k] of RULE_FIELDS) { if (p[k] !== undefined) next[k] = p[k]; else delete next[k]; }
+    return { ...d, method: key, defaults: next };
+  };
 
   const setCabs = (fn: (c: CabInput[]) => CabInput[]) => setDoc(s => ({ ...s, cabs: fn(s.cabs) }));
   const upd = (id: number, patch: Partial<CabInput>) => setCabs(cs => cs.map(c => (c.id === id ? { ...c, ...patch } : c)));
@@ -107,7 +74,8 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
       <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
       <JobsMenu jobId={jobId} doc={doc} initialJobs={initialJobs} saveState={save.state} onOpen={openJob}
         onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} />
-      <div className="ml-auto text-xs tracking-[0.04em] text-muted">{today}</div>
+      <Link href="/admin" className="ml-auto text-xs font-bold">Admin</Link>
+      <div className="text-xs tracking-[0.04em] text-muted">{today}</div>
     </div>
   );
 
@@ -115,15 +83,13 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
     return (
       <div className="box-border flex min-h-screen flex-col gap-5 p-5">
         <div className="mx-auto w-full max-w-[880px]">{topBar}</div>
-        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} f={f}
+        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} materials={doc.materials} f={f}
+          presets={shop.presets} shopMaterials={shop.materials} options={shop.options}
           onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
           onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}
-          onPreset={key => setDoc(d => ({ ...d, method: key, defaults: { ...presetFor(key).values } }))}
-          onResetRules={() => setDoc(d => {
-            const next = { ...d.defaults }, p = presetFor(d.method).values;
-            for (const [k] of DEFAULT_FIELDS) { if (p[k] !== undefined) next[k] = p[k]; else delete next[k]; }
-            return { ...d, defaults: next };
-          })}
+          onMaterial={(slot, m) => setDoc(d => ({ ...d, materials: { ...d.materials, [slot]: m } }))}
+          onPreset={key => setDoc(d => withRules(d, key))}
+          onResetRules={() => setDoc(d => withRules(d, d.method))}
           onContinue={() => { setDoc(d => (d.setupDone ? d : { ...d, setupDone: true })); setView('items'); window.scrollTo(0, 0); }} />
       </div>
     );
@@ -135,7 +101,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
       <div data-print-hide="1" className="flex max-w-[640px] min-w-0 flex-[1_1_600px] flex-col gap-4">
         {topBar}
 
-        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} d={result.d} onEdit={() => { setView('setup'); window.scrollTo(0, 0); }} />
+        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} presets={shop.presets} d={result.d} onEdit={() => { setView('setup'); window.scrollTo(0, 0); }} />
 
         <CabinetList cabs={cabs} built={result.cabs} f={f} selId={selCabId} pickId={pickId}
           onUpdate={upd}

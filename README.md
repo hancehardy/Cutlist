@@ -12,9 +12,10 @@ npm run build && npm start
 ```
 
 - **Data:** jobs autosave to SQLite at `data/cutlist.db` (override with `CUTLIST_DB=/path/file.db`). A new database is seeded with the 3DB15 sample job.
-- **Job setup page:** new jobs start here: job details, construction method (frameless presets in `src/lib/presets.ts`), materials and hardware (dropdowns with Other…) and construction rules. **Continue to items** opens item entry; **Edit setup** on the job summary card returns to it.
+- **Job setup page:** new jobs start here: job details, construction method and its rules, case/back/front materials (from the Admin table, or Other… with its own thickness and sheet size) and hardware (dropdowns with Other…). **Continue to items** opens item entry; **Edit setup** on the job summary card returns to it.
 - **Jobs menu** (next to the title): switch jobs, new / new from sample, import and export `.cutlist.json`, fraction or decimal dimensions, delete.
-- **Code map:** `src/lib/engine.ts` construction rules and report math · `src/lib/job.ts` job document + import validation · `src/lib/presets.ts` construction presets and dropdown choices · `src/lib/db.ts` SQLite · `src/app/api/jobs` REST API · `src/components` UI.
+- **Admin page** (`/admin`, linked from the top bar): the materials table (name, thickness, sheet width and length), the hardware dropdown choices, the panel saw settings (kerf, edge trim), and the construction methods (rules only). Saved to the same database. A job copies its method rules, materials and hardware when it is set up; saw settings apply to every job live.
+- **Code map:** `src/lib/engine.ts` construction rules and report math · `src/lib/job.ts` job document + import validation · `src/lib/presets.ts` built-in method and hardware choices · `src/lib/shop.ts` shop settings document (materials, choices, saw, methods) · `src/lib/db.ts` SQLite · `src/app/api/jobs`, `src/app/api/shop` REST API · `src/components` UI, `src/components/admin` admin page.
 
 ---
 

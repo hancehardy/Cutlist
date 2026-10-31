@@ -1,6 +1,7 @@
-import type { CabInput, DimFormat, Kind, RawDefaults, SectionInput } from './engine';
-import { DEFAULTS, TYPES } from './engine';
-import { DEFAULT_PRESET, PRESETS } from './presets';
+import type { CabInput, DimFormat, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
+import { DEFAULTS, HARDWARE_FIELDS, TYPES, fmt } from './engine';
+import { PRESETS } from './presets';
+import { type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial } from './shop';
 
 export interface JobInfo { name: string; client: string; catalog: string; drawn: string }
 
@@ -8,16 +9,22 @@ export interface JobInfo { name: string; client: string; catalog: string; drawn:
 export interface JobDoc {
   version: 1;
   job: JobInfo;
+  /** Construction rule overrides and hardware picks. Saw settings come from the shop at build time. */
   defaults: RawDefaults;
   cabs: CabInput[];
   dimFormat: DimFormat;
-  /** Construction preset key (see presets.ts); `defaults` holds its values plus any edits. */
+  /** Construction method key (see presets.ts); `defaults` holds its rule values plus any edits. */
   method: string;
+  /** Copies of the materials picked for the case, back and fronts, so the file stands on its own. */
+  materials: JobMaterials;
   /** False until the setup page's "Continue to items" is pressed; new jobs open on setup. */
   setupDone: boolean;
 }
 
 export interface JobSummary { id: string; name: string; client: string; updatedAt: string }
+
+const MELAMINE_34: Material = { name: '3/4 2s Melamine', thk: '3/4', w: '49', l: '97' };
+const MELAMINE_14: Material = { name: '1/4 1s Melamine', thk: '1/4', w: '49', l: '97' };
 
 export function sampleJob(): JobDoc {
   return {
@@ -30,13 +37,21 @@ export function sampleJob(): JobDoc {
       { id: 3, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1', layout: null },
     ],
     dimFormat: 'fraction',
-    method: DEFAULT_PRESET,
+    method: PRESETS[0].key,
+    materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 } },
     setupDone: true,
   };
 }
 
-export function emptyJob(): JobDoc {
-  return { version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults: {}, cabs: [], dimFormat: 'fraction', method: DEFAULT_PRESET, setupDone: false };
+/** A blank job on the shop's default method, materials and first hardware choices. */
+export function emptyJob(shop: ShopConfig = defaultShopConfig()): JobDoc {
+  const preset = shop.presets[0] ?? PRESETS[0];
+  const defaults: RawDefaults = { ...preset.values };
+  for (const [k] of HARDWARE_FIELDS) { const first = shop.options[k]?.[0]; if (first) defaults[k] = first; }
+  return {
+    version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults, cabs: [], dimFormat: 'fraction',
+    method: preset.key, materials: defaultJobMaterials(shop.materials), setupDone: false,
+  };
 }
 
 const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : fallback);
@@ -57,8 +72,34 @@ function normSection(s: unknown): SectionInput | null {
   };
 }
 
-/** Validate untrusted JSON (imported file or request body) into a JobDoc. Throws on unusable input. */
-export function normalizeJobDoc(raw: unknown): JobDoc {
+/** Rule keys that used to live in a job's defaults and now come from its materials or the shop's saw settings. */
+const MOVED_KEYS = ['caseMat', 'backMat', 'frontMat', 'caseThk', 'backThk', 'sheetL', 'sheetW', 'kerf', 'edgeTrim'] as const;
+
+/** Materials for a job saved before they existed: names, thicknesses and sheet size from its old rules. */
+function migrateMaterials(defaults: RawDefaults, shop: ShopConfig): JobMaterials {
+  const one = (name: string, thk: string | undefined): Material => {
+    const known = materialByName(shop.materials, name);
+    return {
+      name,
+      thk: thk || known?.thk || fmt(DEFAULTS.caseThk),
+      w: defaults.sheetW ?? known?.w ?? fmt(DEFAULTS.sheetW),
+      l: defaults.sheetL ?? known?.l ?? fmt(DEFAULTS.sheetL),
+    };
+  };
+  const caseName = defaults.caseMat || DEFAULTS.caseMat, backName = defaults.backMat || DEFAULTS.backMat, frontName = defaults.frontMat || DEFAULTS.frontMat;
+  return {
+    case: one(caseName, defaults.caseThk),
+    back: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
+    front: one(frontName, defaults.caseThk),
+  };
+}
+
+/**
+ * Validate untrusted JSON (imported file or request body) into a JobDoc. Throws on unusable input.
+ * `shop` supplies the construction methods (an unknown method falls back to the first one) and the
+ * materials table used to migrate jobs saved before materials were part of the job.
+ */
+export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConfig()): JobDoc {
   if (!raw || typeof raw !== 'object') throw new Error('Job file is not a JSON object.');
   const r = raw as Record<string, unknown>;
   const j = (r.job && typeof r.job === 'object' ? r.job : {}) as Record<string, unknown>;
@@ -71,6 +112,16 @@ export function normalizeJobDoc(raw: unknown): JobDoc {
       if (typeof v === 'string' || typeof v === 'number') (defaults as Record<string, string>)[k] = String(v);
     }
   }
+  // Materials: the job's own copies, or built from the old material/thickness/sheet rules.
+  let materials: JobMaterials | null = null;
+  if (r.materials && typeof r.materials === 'object') {
+    const m = r.materials as Record<string, unknown>;
+    const c = normMaterial(m.case), b = normMaterial(m.back), f = normMaterial(m.front);
+    if (c && b && f) materials = { case: c, back: b, front: f };
+  }
+  if (!materials) materials = migrateMaterials(defaults, shop);
+  for (const k of MOVED_KEYS) delete defaults[k];
+
   const cabs: CabInput[] = r.cabs.map((c: unknown, i: number) => {
     const o = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
     const layout = Array.isArray(o.layout) ? o.layout.map(normSection).filter((s): s is SectionInput => !!s) : null;
@@ -85,13 +136,15 @@ export function normalizeJobDoc(raw: unknown): JobDoc {
   const seen = new Set<number>();
   let next = Math.max(0, ...cabs.map(c => c.id)) + 1;
   for (const c of cabs) { if (seen.has(c.id)) c.id = next++; seen.add(c.id); }
+  const presets = shop.presets;
   return {
     version: 1,
     job: { name: str(j.name, 'Untitled job'), client: str(j.client), catalog: str(j.catalog), drawn: str(j.drawn) },
     defaults,
     cabs,
     dimFormat: r.dimFormat === 'decimal' ? 'decimal' : 'fraction',
-    method: PRESETS.some(p => p.key === r.method) ? (r.method as string) : DEFAULT_PRESET,
+    method: presets.some(p => p.key === r.method) ? (r.method as string) : (presets[0]?.key ?? PRESETS[0].key),
+    materials,
     // Jobs saved before setup existed have no flag: treat them as set up.
     setupDone: r.setupDone !== false,
   };
