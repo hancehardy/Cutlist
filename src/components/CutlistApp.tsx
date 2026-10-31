@@ -12,10 +12,10 @@ import { JobSummaryCard } from './JobSummaryCard';
 import { presetFor } from '@/lib/presets';
 import { JobsMenu } from './JobsMenu';
 import { useAutosave } from './useAutosave';
-import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, type ReportCtx } from './Reports';
+import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, SheetSummaryReport, type ReportCtx } from './Reports';
 
-type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'hardware';
-const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['hardware', 'Hardware']];
+type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'sheets' | 'hardware';
+const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['sheets', 'Sheets'], ['hardware', 'Hardware']];
 
 interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; initialShop: ShopConfig }
 
@@ -160,6 +160,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop }: Prop
         {show('drawers') && <DrawerListReport {...ctx} />}
         {show('assembly') && <AssemblySheets {...ctx} />}
         {show('optimize') && <OptimizeSheets {...ctx} />}
+        {show('sheets') && <SheetSummaryReport {...ctx} />}
         {show('hardware') && <HardwareReport {...ctx} />}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_CATALOG, buildJob, defaultLayout, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, type CabCatalog } from './engine';
+import { BUILTIN_CATALOG, buildJob, defaultLayout, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, sheetTotals, type CabCatalog } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
 import { PRESETS, isCustomized, type Preset } from './presets';
 import { defaultShopConfig } from './shop';
@@ -368,3 +368,47 @@ describe('saving a job cabinet\'s faces as a box', () => {
   });
 });
 const BUILTIN_TYPES_WITH = (t: CabCatalog['types'][number]) => [...BUILTIN_CATALOG.types, t];
+
+describe('sheet material summary', () => {
+  it('totals the sheets of each material from the saw plans', () => {
+    const job = buildJob([
+      { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' },
+      { id: 2, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '4' },
+    ], {});
+    const t = sheetTotals(job.sawPlans);
+    expect(t.map(x => [x.name, x.sheets])).toEqual(job.sawPlans.map(p => [p.name, p.sheets.length]));
+    expect(t.reduce((n, x) => n + x.sheets, 0)).toBe(job.summary.sheets);
+    // Every placed part is counted once, on a 97 x 49 sheet, with a sane yield.
+    expect(t.reduce((n, x) => n + x.parts, 0)).toBe(job.summary.nParts);
+    for (const x of t) { expect([x.L, x.W]).toEqual([97, 49]); expect(x.yieldPct).toBeGreaterThan(0); expect(x.yieldPct).toBeLessThanOrEqual(100); expect(x.oversize).toBe(0); }
+  });
+
+  it('estimates edge banding per material: fronts all round, case parts and stretchers on the exposed edge', () => {
+    const job = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {});
+    const cab = job.cabs[0];
+    const band = (desc: string) => cab.parts.find(p => p.desc === desc)!.band;
+    expect(band('Unfinished Left End')).toBe(30);
+    expect(band('Deck')).toBe(13.5);
+    expect(band('Top Stretcher')).toBe(13.5);
+    expect(band('Drawer Stretcher')).toBe(13.5);
+    expect(band('Nailer')).toBe(0);
+    expect(band('Unfinished Back')).toBe(0);
+    expect(cab.fronts.map(fr => fr.band)).toEqual([2 * (14.875 + 6.1875), 2 * (14.875 + 11.6875), 2 * (14.875 + 11.6875)]);
+    // ends 60 + deck 13.5 + 2 top stretchers 27 + drawer stretcher 13.5 + fronts 148.375 = 262.375 in
+    const t = sheetTotals(job.sawPlans, job.materials);
+    expect(t.find(x => x.name === '3/4 2s Melamine')!.bandLf).toBeCloseTo(262.375 / 12, 6);
+    expect(t.find(x => x.name === '1/4 1s Melamine')!.bandLf).toBe(0);
+    // Quantities multiply the banding.
+    const two = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '2' }], {});
+    expect(two.materials.find(m => m.name === '3/4 2s Melamine')!.bandLf).toBeCloseTo((2 * 262.375) / 12, 6);
+  });
+
+  it('reports parts too big for the sheet instead of counting them', () => {
+    const job = buildJob([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }], {});
+    const caseTotal = sheetTotals(job.sawPlans).find(x => x.name === '3/4 2s Melamine')!;
+    expect(caseTotal.oversize).toBe(2);
+    // Case parts and the doors share the material; every one is either placed or listed as oversize.
+    const all = [...job.cabs[0].parts, ...job.cabs[0].fronts].filter(p => p.mat === '3/4 2s Melamine').reduce((n, p) => n + p.qty, 0);
+    expect(caseTotal.parts + caseTotal.oversize).toBe(all);
+  });
+});
