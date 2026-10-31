@@ -20,8 +20,11 @@ export function JobSummaryCard({ job, method, defaults, presets, d, onEdit }: Pr
         <div>
           <span className="eyebrow mr-2 text-[10px]">{presetFor(method, presets).label}{custom ? ' · customized' : ''}</span>
         </div>
-        <div>Case {d.caseMat} · Back {d.backMat} · Fronts {d.frontMat} · {d.doorStyle}</div>
-        <div>{d.drawerStyle} · {d.glideSeries} glides · {d.pull} · {d.hinge}</div>
+        <div>Case {d.caseMat} · Back {d.backMat} · Fronts {d.frontMat}</div>
+        <div>
+          Doors {d.doorStyle}{d.fronts.doorSlab ? '' : ' (ordered)'} · Drawer fronts {d.fronts.drawerFrontStyle}{d.fronts.drawerGrain === 'Horizontal' ? ', horizontal grain' : ''}{d.fronts.drawerSlab ? '' : ' (ordered)'} · {d.drawerStyle} boxes
+        </div>
+        <div>{d.glideSeries} glides · {d.pull} · {d.hinge}</div>
       </div>
     </div>
   );

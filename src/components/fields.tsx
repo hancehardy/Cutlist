@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { parseDim, type Material } from '@/lib/engine';
-import { materialLabel, sameMaterial } from '@/lib/shop';
+import { parseDim, type FrontStyle, type Grain, type Material } from '@/lib/engine';
+import { materialLabel, sameMaterial, sameStyle } from '@/lib/shop';
 
 const OTHER = '__other__';
 
@@ -97,6 +97,50 @@ export function Stepper({ label, value, onDec, onInc }: { label: string; value: 
         <div className="min-w-[18px] px-1 text-center text-[13px] font-extrabold text-ink">{value}</div>
         <button onClick={onInc} className={b} aria-label={`More ${label.toLowerCase()}`}>+</button>
       </div>
+    </div>
+  );
+}
+
+export const styleLabel = (s: FrontStyle, grain: boolean) =>
+  `${s.name} · ${s.slab ? 'slab, cut in shop' : 'ordered'}${grain && s.grain === 'Horizontal' ? ' · horizontal grain' : ''}`;
+
+/** Pick a door or drawer front style from the shop list, or choose Other… to type one with its own cut/ordered flag (and grain for drawer fronts). */
+export function StyleField({ label, value, styles, grain, onChange }: { label: string; value: FrontStyle; styles: FrontStyle[]; grain?: boolean; onChange: (s: FrontStyle) => void }) {
+  const listed = styles.some(s => sameStyle(s, value, !!grain));
+  const [other, setOther] = useState(!listed);
+  const showOther = other || !listed;
+  return (
+    <div className="flex flex-col gap-[3px] text-xs text-muted">
+      <label className="flex flex-col gap-[3px]">
+        {label}
+        <select value={showOther ? OTHER : value.name} className="field px-1.5 py-1.5 text-[13px] text-ink"
+          onChange={e => {
+            if (e.target.value === OTHER) { setOther(true); return; }
+            const s = styles.find(x => x.name === e.target.value);
+            if (s) { setOther(false); onChange({ ...s }); }
+          }}>
+          {styles.map(s => <option key={s.name} value={s.name}>{styleLabel(s, !!grain)}</option>)}
+          <option value={OTHER}>Other…</option>
+        </select>
+      </label>
+      {showOther && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <input value={value.name} onChange={e => onChange({ ...value, name: e.target.value })} placeholder="Style name" autoFocus={other && listed}
+            aria-label={`${label} (other)`} className={`field min-w-0 flex-1 px-2 py-1.5 text-[13px] text-ink ${value.name.trim() ? '' : 'field-bad'}`} />
+          <label className="flex items-center gap-1.5 text-[12px] text-ink-2">
+            <input type="checkbox" checked={value.slab} onChange={e => onChange({ ...value, slab: e.target.checked })} /> Slab, cut in shop
+          </label>
+          {grain && (
+            <label className="flex items-center gap-1.5 text-[12px] text-ink-2">
+              Grain
+              <select value={value.grain} onChange={e => onChange({ ...value, grain: e.target.value as Grain })} className="field px-1.5 py-1 text-[12px] text-ink" aria-label={`${label} grain`}>
+                <option value="Vertical">Vertical</option>
+                <option value="Horizontal">Horizontal</option>
+              </select>
+            </label>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BUILTIN_CATALOG, newFace, type Material } from './engine';
 import { emptyJob, normalizeJobDoc } from './job';
 import { OPTIONS, PRESETS, isCustomized, presetFor, type Preset } from './presets';
-import { BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normType, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
+import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normStyle, normType, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
 
 const M = (name: string, thk: string, w = '49', l = '97'): Material => ({ name, thk, w, l });
 const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
@@ -175,5 +175,44 @@ describe('a box posted from a job', () => {
     expect(normType('x', cats)).toBeNull();
     expect(normType({ code: 'B-C', cat: 'island', h: '34 1/2', d: '24', toe: '4 1/2', faces: [newFace('drawer', 'smallFront')] }, cats))
       .toEqual({ code: 'B-C', cat: 'base', label: 'B-C', img: '', h: '34 1/2', d: '24', toe: '4 1/2', faces: [newFace('drawer', 'smallFront')] });
+  });
+});
+
+describe('front styles config', () => {
+  it('starts from the built-in styles and keeps the drawer box list as an option', () => {
+    const c = defaultShopConfig();
+    expect(c.doorStyles).toEqual(BUILTIN_DOOR_STYLES);
+    expect(c.drawerFrontStyles).toEqual(BUILTIN_DRAWER_FRONT_STYLES);
+    expect(OPTION_KEYS).toContain('drawerStyle');
+    expect(OPTION_KEYS).not.toContain('doorStyle');
+    expect('doorStyle' in normalizeShopConfig({ options: { doorStyle: ['x'] } }).options).toBe(false);
+  });
+
+  it('cleans up styles: name required and unique, slab inferred from the name, grain validated', () => {
+    expect(normStyle({ name: ' Slab (Paint) ' })).toEqual({ name: 'Slab (Paint)', slab: true, grain: 'Vertical' });
+    expect(normStyle({ name: 'Shaker', grain: 'Horizontal' })).toEqual({ name: 'Shaker', slab: false, grain: 'Horizontal' });
+    expect(normStyle({ name: 'Flat', slab: true, grain: 'sideways' })).toEqual({ name: 'Flat', slab: true, grain: 'Vertical' });
+    expect(normStyle({ name: '' })).toBeNull();
+    const c = normalizeShopConfig({ doorStyles: [{ name: 'A' }, { name: 'A', slab: true }, 'junk', { name: 'B', slab: false }] });
+    expect(c.doorStyles).toEqual([{ name: 'A', slab: false, grain: 'Vertical' }, { name: 'B', slab: false, grain: 'Vertical' }]);
+    expect(normalizeShopConfig({ doorStyles: [] }).doorStyles).toEqual(BUILTIN_DOOR_STYLES);
+  });
+
+  it('seeds styles from an older document\'s door style dropdown', () => {
+    const c = normalizeShopConfig({ options: { doorStyle: ['Slab (Melamine)', 'Raised panel'] } });
+    expect(c.doorStyles).toEqual([{ name: 'Slab (Melamine)', slab: true, grain: 'Vertical' }, { name: 'Raised panel', slab: false, grain: 'Vertical' }]);
+    expect(c.drawerFrontStyles.map(s => s.name)).toEqual(['Slab (Melamine)', 'Raised panel']);
+  });
+
+  it('gives jobs their front styles: copies on new jobs, migrated from the old door style on old ones', () => {
+    const shop: ShopConfig = { ...defaultShopConfig(), doorStyles: [{ name: 'Shaker', slab: false, grain: 'Vertical' }], drawerFrontStyles: [{ name: 'Slab H', slab: true, grain: 'Horizontal' }] };
+    const fresh = emptyJob(shop);
+    expect(fresh.fronts).toEqual({ door: { name: 'Shaker', slab: false, grain: 'Vertical' }, drawer: { name: 'Slab H', slab: true, grain: 'Horizontal' } });
+    expect(fresh.defaults.drawerStyle).toBe('5 Piece Drawer');
+    const old = normalizeJobDoc({ cabs: [], defaults: { doorStyle: 'Slab (Veneer)', drawerStyle: 'Metal Box', pull: 'Knob' } });
+    expect(old.fronts).toEqual({ door: { name: 'Slab (Veneer)', slab: true, grain: 'Vertical' }, drawer: { name: 'Slab (Veneer)', slab: true, grain: 'Vertical' } });
+    expect(old.defaults).toEqual({ drawerStyle: 'Metal Box', pull: 'Knob' });
+    const kept = normalizeJobDoc({ cabs: [], fronts: { door: { name: 'X', slab: false }, drawer: { name: 'Y', slab: true, grain: 'Horizontal' } } });
+    expect(kept.fronts).toEqual({ door: { name: 'X', slab: false, grain: 'Vertical' }, drawer: { name: 'Y', slab: true, grain: 'Horizontal' } });
   });
 });

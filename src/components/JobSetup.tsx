@@ -1,10 +1,10 @@
 'use client';
 import { useState } from 'react';
-import { DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type DefaultKey, type Fmt, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type DefaultKey, type Fmt, type FrontStyle, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 import { optionsFor, type ShopOptions } from '@/lib/shop';
-import { ChoiceField, MaterialField } from './fields';
+import { ChoiceField, MaterialField, StyleField } from './fields';
 
 const jobLabel = 'flex flex-col gap-1 text-[11px] font-bold tracking-[0.14em] uppercase text-muted';
 const jobInput = 'field text-[15px] tracking-normal normal-case text-ink px-2.5 py-2';
@@ -14,14 +14,18 @@ interface Props {
   method: string;
   defaults: RawDefaults;
   materials: JobMaterials;
+  fronts: JobFronts;
   f: Fmt;
   /** The shop's construction methods, materials table and hardware choices, from the Admin page. */
   presets: Preset[];
   shopMaterials: Material[];
+  doorStyles: FrontStyle[];
+  drawerFrontStyles: FrontStyle[];
   options: ShopOptions;
   onJob: (k: keyof JobInfo, v: string) => void;
   onDefault: (k: DefaultKey, v: string) => void;
   onMaterial: (slot: MatSlot, m: Material) => void;
+  onFront: (slot: keyof JobFronts, s: FrontStyle) => void;
   /** Switch method: replaces the construction rules, leaving materials and hardware alone. */
   onPreset: (key: string) => void;
   /** Put the construction rules back to the method's values. */
@@ -44,7 +48,7 @@ function Section({ step, title, sub, children }: { step: number; title: string; 
   );
 }
 
-export function JobSetup({ job, method, defaults, materials, f, presets, shopMaterials, options, onJob, onDefault, onMaterial, onPreset, onResetRules, onContinue, existing }: Props) {
+export function JobSetup({ job, method, defaults, materials, fronts, f, presets, shopMaterials, doorStyles, drawerFrontStyles, options, onJob, onDefault, onMaterial, onFront, onPreset, onResetRules, onContinue, existing }: Props) {
   const [tried, setTried] = useState(false);
   const custom = isCustomized(method, defaults, presets);
   const nameMissing = !job.name.trim();
@@ -128,7 +132,15 @@ export function JobSetup({ job, method, defaults, materials, f, presets, shopMat
         </div>
       </Section>
 
-      <Section step={4} title="Hardware" sub="Pick from the list or choose Other… to type your own">
+      <Section step={4} title="Fronts" sub="Slab styles are cut and optimized here; any other style is ordered and only listed on the door list">
+        <div className="grid gap-x-3.5 gap-y-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' }}>
+          <StyleField label="Door front style" value={fronts.door} styles={doorStyles} onChange={s => onFront('door', s)} />
+          <StyleField label="Drawer front style" value={fronts.drawer} styles={drawerFrontStyles} grain onChange={s => onFront('drawer', s)} />
+          <ChoiceField label={BOX_FIELD[1]} value={val(BOX_FIELD[0])} options={optionsFor(options, BOX_FIELD[0])} onChange={v => onDefault(BOX_FIELD[0], v)} />
+        </div>
+      </Section>
+
+      <Section step={5} title="Hardware" sub="Pick from the list or choose Other… to type your own">
         <div className="grid gap-x-3.5 gap-y-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}>
           {HARDWARE_FIELDS.map(([k, lab]) => (
             <ChoiceField key={k} label={lab} value={val(k)} options={optionsFor(options, k)} onChange={v => onDefault(k, v)} />

@@ -27,5 +27,4 @@ export const OPTIONS: Partial<Record<DefaultKey, string[]>> = {
   pull: ['4in C-Pull', '96mm Bar Pull', '128mm Bar Pull', 'Knob', 'None (push to open)'],
   hinge: ['Blum 110° Clip-top', 'Blum 110° Clip-top Blumotion', 'Blum 170° Clip-top'],
   drawerStyle: ['5 Piece Drawer', 'Dovetail Drawer', 'Melamine Box', 'Metal Box'],
-  doorStyle: ['Slab (Melamine)', 'Slab (Veneer)', 'Slab (Paint)', 'Shaker (5 piece)'],
 };

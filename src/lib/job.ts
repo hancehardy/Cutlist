@@ -1,7 +1,7 @@
-import type { CabInput, DimFormat, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
-import { DEFAULTS, HARDWARE_FIELDS, fmt } from './engine';
+import type { CabInput, DimFormat, FrontStyle, JobFronts, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, fmt } from './engine';
 import { PRESETS } from './presets';
-import { type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial } from './shop';
+import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial, normStyle, styleByName } from './shop';
 
 export interface JobInfo { name: string; client: string; catalog: string; drawn: string }
 
@@ -17,6 +17,8 @@ export interface JobDoc {
   method: string;
   /** Copies of the materials picked for the case, back and fronts, so the file stands on its own. */
   materials: JobMaterials;
+  /** Copies of the door and drawer front styles; the drawer box type is `defaults.drawerStyle`. */
+  fronts: JobFronts;
   /** False until the setup page's "Continue to items" is pressed; new jobs open on setup. */
   setupDone: boolean;
 }
@@ -39,6 +41,7 @@ export function sampleJob(): JobDoc {
     dimFormat: 'fraction',
     method: PRESETS[0].key,
     materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 } },
+    fronts: { door: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' }, drawer: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' } },
     setupDone: true,
   };
 }
@@ -47,10 +50,12 @@ export function sampleJob(): JobDoc {
 export function emptyJob(shop: ShopConfig = defaultShopConfig()): JobDoc {
   const preset = shop.presets[0] ?? PRESETS[0];
   const defaults: RawDefaults = { ...preset.values };
-  for (const [k] of HARDWARE_FIELDS) { const first = shop.options[k]?.[0]; if (first) defaults[k] = first; }
+  for (const [k] of [...HARDWARE_FIELDS, BOX_FIELD]) { const first = shop.options[k]?.[0]; if (first) defaults[k] = first; }
   return {
     version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults, cabs: [], dimFormat: 'fraction',
-    method: preset.key, materials: defaultJobMaterials(shop.materials), setupDone: false,
+    method: preset.key, materials: defaultJobMaterials(shop.materials),
+    fronts: { door: { ...(shop.doorStyles[0] ?? BUILTIN_DOOR_STYLES[0]) }, drawer: { ...(shop.drawerFrontStyles[0] ?? BUILTIN_DRAWER_FRONT_STYLES[0]) } },
+    setupDone: false,
   };
 }
 
@@ -73,7 +78,14 @@ function normSection(s: unknown): SectionInput | null {
 }
 
 /** Rule keys that used to live in a job's defaults and now come from its materials or the shop's saw settings. */
-const MOVED_KEYS = ['caseMat', 'backMat', 'frontMat', 'caseThk', 'backThk', 'sheetL', 'sheetW', 'kerf', 'edgeTrim'] as const;
+const MOVED_KEYS = ['caseMat', 'backMat', 'frontMat', 'caseThk', 'backThk', 'sheetL', 'sheetW', 'kerf', 'edgeTrim', 'doorStyle'] as const;
+
+/** Front styles for a job saved before they existed: its old door style name, looked up in the shop's lists. */
+function migrateFronts(defaults: RawDefaults, shop: ShopConfig): JobFronts {
+  const name = defaults.doorStyle || DEFAULTS.doorStyle;
+  const guess: FrontStyle = { name, slab: /slab/i.test(name), grain: 'Vertical' };
+  return { door: { ...(styleByName(shop.doorStyles, name) ?? guess) }, drawer: { ...(styleByName(shop.drawerFrontStyles, name) ?? guess) } };
+}
 
 /** Materials for a job saved before they existed: names, thicknesses and sheet size from its old rules. */
 function migrateMaterials(defaults: RawDefaults, shop: ShopConfig): JobMaterials {
@@ -120,6 +132,13 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     if (c && b && f) materials = { case: c, back: b, front: f };
   }
   if (!materials) materials = migrateMaterials(defaults, shop);
+  let fronts: JobFronts | null = null;
+  if (r.fronts && typeof r.fronts === 'object') {
+    const o = r.fronts as Record<string, unknown>;
+    const door = normStyle(o.door), drawer = normStyle(o.drawer);
+    if (door && drawer) fronts = { door, drawer };
+  }
+  if (!fronts) fronts = migrateFronts(defaults, shop);
   for (const k of MOVED_KEYS) delete defaults[k];
 
   const cabs: CabInput[] = r.cabs.map((c: unknown, i: number) => {
@@ -146,6 +165,7 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     dimFormat: r.dimFormat === 'decimal' ? 'decimal' : 'fraction',
     method: presets.some(p => p.key === r.method) ? (r.method as string) : (presets[0]?.key ?? PRESETS[0].key),
     materials,
+    fronts,
     // Jobs saved before setup existed have no flag: treat them as set up.
     setupDone: r.setupDone !== false,
   };

@@ -55,12 +55,15 @@ export function CutListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
 export function DoorListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
   return (
     <Card title="Door List" sub={headerTxt}>
-      <div className="mt-2 text-[13px] text-ink-3">{r.d.doorStyle} · Outside edge: none · Panel: slab · Grain: vertical (along height)</div>
+      <div className="mt-2 flex flex-col gap-0.5 text-[13px] text-ink-3">
+        <div><span className="font-semibold text-ink">Doors</span> {r.d.doorStyle} · {r.d.fronts.doorSlab ? 'slab, cut in shop' : 'ordered out — not on the cut list or sheet plans'} · grain vertical (along height)</div>
+        <div><span className="font-semibold text-ink">Drawer and false fronts</span> {r.d.fronts.drawerFrontStyle} · {r.d.fronts.drawerSlab ? 'slab, cut in shop' : 'ordered out — not on the cut list or sheet plans'} · grain {r.d.fronts.drawerGrain === 'Horizontal' ? 'horizontal (along width)' : 'vertical (along height)'}</div>
+      </div>
       <Table cols="44px minmax(120px,1.6fr) minmax(90px,1fr) minmax(90px,1fr) minmax(80px,1fr)"
         heads={['Qty', 'Width x Height', 'Type', 'Grain', 'Cab (Qty)']}
         rows={r.doors.map((row, i) => ({ key: i, cells: [
           { v: row.qty, c: 'font-bold' }, { v: row.size, c: 'font-semibold tabular-nums' }, { v: row.type },
-          { v: 'Vertical (along L)', c: 'text-ink-3' }, { v: row.cabsTxt, c: 'text-ink-3' },
+          { v: `${row.grain === 'Vertical' ? 'Vertical (along L)' : 'Horizontal (along W)'}${row.cut ? '' : ' · ordered'}`, c: 'text-ink-3' }, { v: row.cabsTxt, c: 'text-ink-3' },
         ] }))} />
       <div className="mt-2.5 text-xs text-muted">DF = drawer front · DR = door · FF = false front. Front width = cabinet width − {f(2 * r.d.sideReveal)}.</div>
       <Footer>{footerTxt}</Footer>

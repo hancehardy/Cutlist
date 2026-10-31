@@ -45,8 +45,8 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop }: Prop
   const f = useMemo(() => makeFmt(doc.dimFormat), [doc.dimFormat]);
   // Saw settings are shop-wide and live, so they overlay the job's rules at build time.
   const result = useMemo(
-    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials, shop.catalog),
-    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, shop.saw, shop.catalog],
+    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials, shop.catalog, doc.fronts),
+    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, doc.fronts, shop.saw, shop.catalog],
   );
   const { cabs, job } = doc;
 
@@ -99,11 +99,12 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop }: Prop
     return (
       <div className="box-border flex min-h-screen flex-col gap-5 p-5">
         <div className="mx-auto w-full max-w-[880px]">{topBar}</div>
-        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} materials={doc.materials} f={f}
-          presets={shop.presets} shopMaterials={shop.materials} options={shop.options}
+        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} materials={doc.materials} fronts={doc.fronts} f={f}
+          presets={shop.presets} shopMaterials={shop.materials} doorStyles={shop.doorStyles} drawerFrontStyles={shop.drawerFrontStyles} options={shop.options}
           onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
           onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}
           onMaterial={(slot, m) => setDoc(d => ({ ...d, materials: { ...d.materials, [slot]: m } }))}
+          onFront={(slot, s) => setDoc(d => ({ ...d, fronts: { ...d.fronts, [slot]: s } }))}
           onPreset={key => setDoc(d => withRules(d, key))}
           onResetRules={() => setDoc(d => withRules(d, d.method))}
           onContinue={() => { setDoc(d => (d.setupDone ? d : { ...d, setupDone: true })); setView('items'); window.scrollTo(0, 0); }} />

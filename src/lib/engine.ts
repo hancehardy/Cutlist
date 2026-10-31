@@ -134,8 +134,10 @@ export const RULE_KEYS = new Set<DefaultKey>(RULE_FIELDS.map(f => f[0]));
 export const SAW_FIELDS: [DefaultKey, string][] = [['kerf', 'Kerf'], ['edgeTrim', 'Edge trim (1 long + 1 short edge)']];
 /** Hardware picked per job. */
 export const HARDWARE_FIELDS: [DefaultKey, string][] = [
-  ['glideSeries', 'Glide series'], ['glideLens', 'Glide lengths'], ['pull', 'Pull'], ['hinge', 'Hinge'], ['drawerStyle', 'Drawer style'], ['doorStyle', 'Door style'],
+  ['glideSeries', 'Glide series'], ['glideLens', 'Glide lengths'], ['pull', 'Pull'], ['hinge', 'Hinge'],
 ];
+/** The drawer box construction, picked with the fronts. */
+export const BOX_FIELD: [DefaultKey, string] = ['drawerStyle', 'Drawer box type'];
 const NUM_KEYS = new Set<DefaultKey>((Object.keys(DEFAULTS) as DefaultKey[]).filter(k => typeof DEFAULTS[k] === 'number'));
 
 /** A sheet good: name, thickness and stock sheet size, in inches as typed. */
@@ -145,11 +147,17 @@ export const MAT_SLOTS: [MatSlot, string][] = [['case', 'Case material'], ['back
 /** The materials a job is built from: thickness drives the case and back rules, sheet size drives the saw plan. */
 export type JobMaterials = Record<MatSlot, Material>;
 
-export type Resolved = { [K in DefaultKey]: DefaultsShape[K] } & { glideLenList: number[]; sheets: Record<string, { L: number; W: number }> };
+/** A door or drawer front style. Slab styles are cut in the shop; any other is ordered and only listed on the door list. Grain applies to drawer and false fronts. */
+export interface FrontStyle { name: string; slab: boolean; grain: Grain }
+export interface JobFronts { door: FrontStyle; drawer: FrontStyle }
+/** How the resolved front styles drive the engine. */
+export interface FrontRules { doorSlab: boolean; drawerSlab: boolean; drawerGrain: Grain; drawerFrontStyle: string }
+
+export type Resolved = { [K in DefaultKey]: DefaultsShape[K] } & { glideLenList: number[]; sheets: Record<string, { L: number; W: number }>; fronts: FrontRules };
 
 const posDim = (v: unknown, fallback: number) => { const n = parseDim(v); return isNaN(n) || n <= 0 ? fallback : n; };
 
-export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMaterials | null): Resolved {
+export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMaterials | null, fronts?: JobFronts | null): Resolved {
   const d = {} as Record<string, unknown>;
   for (const k of Object.keys(DEFAULTS) as DefaultKey[]) {
     const v = raw?.[k] ?? DEFAULTS[k];
@@ -158,6 +166,12 @@ export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMateria
   const r = d as Resolved;
   r.glideLenList = String(r.glideLens).split(/[,\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b);
   r.sheets = {};
+  // Without styles every front is a slab cut in the shop with vertical grain, as before styles existed.
+  r.fronts = { doorSlab: true, drawerSlab: true, drawerGrain: 'Vertical', drawerFrontStyle: r.doorStyle };
+  if (fronts) {
+    r.doorStyle = fronts.door.name.trim() || DEFAULTS.doorStyle;
+    r.fronts = { doorSlab: fronts.door.slab, drawerSlab: fronts.drawer.slab, drawerGrain: fronts.drawer.grain, drawerFrontStyle: fronts.drawer.name.trim() || r.doorStyle };
+  }
   if (materials) {
     r.caseMat = materials.case.name.trim() || DEFAULTS.caseMat;
     r.backMat = materials.back.name.trim() || DEFAULTS.backMat;
@@ -223,7 +237,8 @@ export function defaultLayout(type: string, d: Resolved, H: number, catalog: Cab
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 
 /** `band` is the lineal inches of edge banding on one part: fronts all round, case parts along the exposed edge, backs and nailers none. */
-export interface Part { qty: number; desc: string; w: number; l: number; grain: Grain; mat: string; band: number }
+/** `cut`: cut from sheet stock in the shop. Ordered fronts (non-slab styles) are listed on the door list but kept off the cut list, saw plans and banding. */
+export interface Part { qty: number; desc: string; w: number; l: number; grain: Grain; mat: string; band: number; cut: boolean }
 export interface DrawerBox { qty: number; kind: 'Drawer' | 'Roll-out'; w: number; dp: number; h: number; sec: string }
 export interface HardwareItem { qty: number; item: string; spec: string }
 export interface Piece { x: number; w: number }
@@ -257,8 +272,12 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const isWall = style === 'wall', isTall = style === 'tall';
   out.boxH = boxH; out.isWall = isWall; out.isTall = isTall;
   if (!known) out.warn = `Unknown cabinet type ${c.type}: built as ${t.code}. Pick a box from the list.`;
-  const P = (qty: number, desc: string, w: number, l: number, grain: Grain, mat: string, band = 0) => out.parts.push({ qty, desc, w, l, grain, mat, band });
-  const F = (qty: number, desc: string, w: number, l: number) => out.fronts.push({ qty, desc, w, l, grain: 'Vertical', mat: d.frontMat, band: 2 * (w + l) });
+  const P = (qty: number, desc: string, w: number, l: number, grain: Grain, mat: string, band = 0) => out.parts.push({ qty, desc, w, l, grain, mat, band, cut: true });
+  // Doors run vertical; drawer and false fronts follow the drawer front style's grain. Only slab styles are cut (and banded) here.
+  const F = (qty: number, desc: string, w: number, l: number, kind: Kind) => {
+    const cut = kind === 'door' ? d.fronts.doorSlab : d.fronts.drawerSlab;
+    out.fronts.push({ qty, desc, w, l, grain: kind === 'door' ? 'Vertical' : d.fronts.drawerGrain, mat: d.frontMat, band: cut ? 2 * (w + l) : 0, cut });
+  };
   const layout = c.layout && c.layout.length ? c.layout : defaultLayout(c.type, d, H, catalog);
   // Case
   // Edge banding: the front edge of ends, decks, tops, shelves and partitions, the long edge of stretchers.
@@ -303,7 +322,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
     };
     out.sections.push(sec);
     const nm = ({ drawer: 'Drawer Front', door: 'Door', false: 'False Front' } as Partial<Record<Kind, string>>)[s.kind];
-    if (nm) F(n, `${nm} ${tag}`, pw, h);
+    if (nm) F(n, `${nm} ${tag}`, pw, h, s.kind);
     if (s.kind === 'drawer') {
       const openW = (inW - (n - 1) * thk) / n;
       const bh = h < 7 ? d.smallBoxH : h < 10 ? Math.min(6, d.bigBoxH) : h < 13 ? d.bigBoxH : d.xlBoxH;
@@ -355,7 +374,8 @@ function glideLen(D: number, d: Resolved) {
 export interface MaterialRow { desc: string; w: number; l: number; grain: Grain; qty: number; cabs: string[]; size: string; grainTxt: string; cabsTxt: string }
 /** Parts of one material, grouped for the cut list. `bandLf`: estimated lineal feet of edge banding on them. */
 export interface MaterialGroup { name: string; rows: MaterialRow[]; rips: string; bandLf: number }
-export interface DoorRow { w: number; l: number; type: 'DR' | 'FF' | 'DF'; qty: number; cabs: string[]; size: string; cabsTxt: string }
+/** `cut`: a slab front cut in the shop; otherwise the row is an ordered front, listed only. */
+export interface DoorRow { w: number; l: number; type: 'DR' | 'FF' | 'DF'; grain: Grain; cut: boolean; qty: number; cabs: string[]; size: string; cabsTxt: string }
 export interface DrawerRow extends DrawerBox { cabs: string[]; wTxt: string; dTxt: string; hTxt: string; cabsTxt: string }
 /** A part placed on a sheet. Drawing coordinates: x along the sheet length (grain), y across its width. */
 export interface SawPart {
@@ -388,15 +408,16 @@ export interface JobResult {
 
 const cabRef = (idx: number, q: number) => (q > 1 ? `${idx} (${q})` : `${idx}`);
 
-export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null, catalog: CabCatalog = BUILTIN_CATALOG): JobResult {
+export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null, catalog: CabCatalog = BUILTIN_CATALOG, fronts?: JobFronts | null): JobResult {
   const f = makeFmt(mode);
-  const d = resolveDefaults(rawDefaults, jobMaterials);
+  const d = resolveDefaults(rawDefaults, jobMaterials, fronts);
   const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f, catalog));
   const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number>; band: number }> = {};
   const key = (p: Part) => `${p.desc}|${p.w}|${p.l}|${p.grain}`;
   for (const cb of built) {
     if (cb.bad) continue;
     for (const p of [...cb.parts, ...cb.fronts]) {
+      if (!p.cut) continue;
       const m = byMat[p.mat] || (byMat[p.mat] = { name: p.mat, rows: {}, rips: {}, band: 0 });
       const k = key(p), q = p.qty * cb.qty;
       const r = m.rows[k] || (m.rows[k] = { desc: p.desc, w: p.w, l: p.l, grain: p.grain, qty: 0, cabs: [] });
@@ -421,7 +442,7 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
     for (const fr of cb.fronts) {
       const type = fr.desc.includes('Door') ? 'DR' : fr.desc.includes('False') ? 'FF' : 'DF';
       const k = `${type}|${fr.w}|${fr.l}`;
-      const r = doorRows[k] || (doorRows[k] = { w: fr.w, l: fr.l, type, qty: 0, cabs: [] });
+      const r = doorRows[k] || (doorRows[k] = { w: fr.w, l: fr.l, type, grain: fr.grain, cut: fr.cut, qty: 0, cabs: [] });
       const q = fr.qty * cb.qty; r.qty += q; r.cabs.push(cabRef(cb.idx, q));
     }
     for (const dr of cb.drawers) {
@@ -456,7 +477,7 @@ function sawPlan(m: MaterialGroup, built: BuiltCabinet[], d: Resolved, f: Fmt): 
   for (const cb of built) {
     if (cb.bad) continue;
     for (let q = 0; q < cb.qty; q++) for (const p of [...cb.parts, ...cb.fronts]) {
-      if (p.mat !== m.name) continue;
+      if (p.mat !== m.name || !p.cut) continue;
       for (let i = 0; i < p.qty; i++) {
         const along = p.grain === 'Vertical' ? p.l : p.w, across = p.grain === 'Vertical' ? p.w : p.l;
         items.push({ id: ++n, name: p.desc, along, across, grain: p.grain, cab: cb.idx });

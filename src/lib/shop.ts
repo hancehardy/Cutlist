@@ -1,14 +1,24 @@
 // Shop-wide configuration edited on the Admin page: the materials table, the dropdown choices for
 // hardware, the panel saw settings and the construction methods. Stored as one JSON document in SQLite.
 import {
-  BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, FACE_H_RULES, HARDWARE_FIELDS, RULE_KEYS, SAW_FIELDS, fmt, newFace, parseDim,
-  type BuildStyle, type CabCatalog, type CabCategory, type CabType, type DefaultKey, type FaceSpec, type Hinge, type JobMaterials, type Kind, type Material, type RawDefaults,
+  BOX_FIELD, BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, FACE_H_RULES, HARDWARE_FIELDS, RULE_KEYS, SAW_FIELDS, fmt, newFace, parseDim,
+  type BuildStyle, type CabCatalog, type CabCategory, type CabType, type DefaultKey, type FaceSpec, type FrontStyle, type Hinge, type JobMaterials, type Kind, type Material, type RawDefaults,
 } from './engine';
 import { OPTIONS, PRESETS, type Preset } from './presets';
 
-/** Hardware fields that offer a dropdown of shop choices (the rest are free text). */
-export const OPTION_KEYS: DefaultKey[] = HARDWARE_FIELDS.map(([k]) => k).filter(k => OPTIONS[k]);
-export const optionLabel = (k: DefaultKey) => [...HARDWARE_FIELDS, ...SAW_FIELDS].find(([x]) => x === k)?.[1] ?? k;
+/** Hardware fields that offer a dropdown of shop choices (the rest are free text), plus the drawer box type. */
+export const HARDWARE_OPTION_KEYS: DefaultKey[] = HARDWARE_FIELDS.map(([k]) => k).filter(k => OPTIONS[k]);
+export const OPTION_KEYS: DefaultKey[] = [...HARDWARE_OPTION_KEYS, BOX_FIELD[0]];
+export const optionLabel = (k: DefaultKey) => [...HARDWARE_FIELDS, BOX_FIELD, ...SAW_FIELDS].find(([x]) => x === k)?.[1] ?? k;
+
+const style = (name: string, slab = true, grain: 'Vertical' | 'Horizontal' = 'Vertical'): FrontStyle => ({ name, slab, grain });
+export const BUILTIN_DOOR_STYLES: FrontStyle[] = [style('Slab (Melamine)'), style('Slab (Veneer)'), style('Slab (Paint)'), style('Shaker (5 piece)', false)];
+export const BUILTIN_DRAWER_FRONT_STYLES: FrontStyle[] = [
+  style('Slab (Melamine)'), style('Slab (Melamine), horizontal grain', true, 'Horizontal'), style('Slab (Veneer)'), style('Slab (Paint)'), style('Shaker (5 piece)', false),
+];
+export const styleByName = (styles: FrontStyle[], name: string) => styles.find(s => s.name === name.trim());
+/** Same style: name and slab flag, and grain when it matters (drawer fronts). */
+export const sameStyle = (a: FrontStyle, b: FrontStyle, grain: boolean) => a.name.trim() === b.name.trim() && a.slab === b.slab && (!grain || a.grain === b.grain);
 
 export type ShopOptions = Partial<Record<DefaultKey, string[]>>;
 export interface SawSettings { kerf: string; edgeTrim: string }
@@ -19,6 +29,9 @@ export interface ShopConfig {
   materials: Material[];
   /** Dropdown choices per hardware field, in display order. An empty list turns the field into free text. */
   options: ShopOptions;
+  /** Door and drawer front styles offered on job setup. */
+  doorStyles: FrontStyle[];
+  drawerFrontStyles: FrontStyle[];
   /** Panel saw settings, applied to every job. */
   saw: SawSettings;
   /** Construction methods. The first one is the default for new jobs. */
@@ -46,6 +59,8 @@ export function defaultShopConfig(): ShopConfig {
     version: 2,
     materials: BUILTIN_MATERIALS.map(m => ({ ...m })),
     options: Object.fromEntries(OPTION_KEYS.map(k => [k, [...OPTIONS[k]!]])),
+    doorStyles: BUILTIN_DOOR_STYLES.map(s => ({ ...s })),
+    drawerFrontStyles: BUILTIN_DRAWER_FRONT_STYLES.map(s => ({ ...s })),
     saw: { kerf: fmt(DEFAULTS.kerf), edgeTrim: fmt(DEFAULTS.edgeTrim) },
     presets: PRESETS.map(p => ({ ...p, values: { ...p.values } })),
     catalog: cloneCatalog(BUILTIN_CATALOG),
@@ -93,6 +108,23 @@ export function normMaterial(raw: unknown): Material | null {
   const name = str(o.name).trim();
   if (!name) return null;
   return { name, thk: dim(o.thk, fmt(DEFAULTS.caseThk)), w: dim(o.w, SHEET_W), l: dim(o.l, SHEET_L) };
+}
+
+/** Validate one front style: a name is required; without a flag, a name containing "slab" is a slab. */
+export function normStyle(raw: unknown): FrontStyle | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const name = str(o.name).trim();
+  if (!name) return null;
+  return { name, slab: typeof o.slab === 'boolean' ? o.slab : /slab/i.test(name), grain: o.grain === 'Horizontal' ? 'Horizontal' : 'Vertical' };
+}
+/** A style list: unique names, first wins; falls back to names from an older document's dropdown, then the built-ins. */
+function normStyles(raw: unknown, oldNames: string[], builtin: FrontStyle[]): FrontStyle[] {
+  const out: FrontStyle[] = [];
+  const push = (s: FrontStyle | null) => { if (s && !out.some(x => x.name === s.name)) out.push(s); };
+  if (Array.isArray(raw)) for (const s of raw) push(normStyle(s));
+  else for (const name of oldNames) push(normStyle({ name }));
+  return out.length ? out : builtin.map(s => ({ ...s }));
 }
 
 /** Thickness read off the front of a material name such as "3/4 MDF" or "0.71 Ply". */
@@ -233,6 +265,8 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
   }
   return {
     version: 2, materials: materials.length ? materials : builtin.materials, options, saw,
+    doorStyles: normStyles(r.doorStyles, normList(rawOpts.doorStyle), builtin.doorStyles),
+    drawerFrontStyles: normStyles(r.drawerFrontStyles, normList(rawOpts.doorStyle), builtin.drawerFrontStyles),
     presets: presets.length ? presets : builtin.presets,
     catalog: normalizeCatalog(r.catalog),
   };

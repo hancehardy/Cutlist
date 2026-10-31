@@ -412,3 +412,37 @@ describe('sheet material summary', () => {
     expect(caseTotal.parts + caseTotal.oversize).toBe(all);
   });
 });
+
+describe('front styles', () => {
+  const cab = { id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1' };
+  const slab = { name: 'Slab', slab: true, grain: 'Vertical' as const };
+
+  it('cuts only slab fronts; ordered styles still appear on the door list', () => {
+    const ordered = buildJob([cab], {}, 'fraction', null, undefined, { door: { name: 'Shaker', slab: false, grain: 'Vertical' }, drawer: slab });
+    expect(ordered.doors.map(r => [r.type, r.cut]).sort()).toEqual([['DF', true], ['DR', false]]);
+    const front = ordered.materials.find(m => m.name === '3/4 2s Melamine')!;
+    expect(front.rows.some(r => r.desc.startsWith('Door'))).toBe(false);
+    expect(front.rows.some(r => r.desc.startsWith('Drawer Front'))).toBe(true);
+    expect(ordered.sawPlans.flatMap(p => p.sheets.flatMap(s => s.parts.map(x => x.name))).some(n => n.startsWith('Door'))).toBe(false);
+    // Ordered doors carry no banding; drawer fronts still do.
+    const doors = ordered.cabs[0].fronts.filter(f => f.desc.startsWith('Door'));
+    expect(doors.every(f => !f.cut && f.band === 0)).toBe(true);
+    expect(ordered.d.doorStyle).toBe('Shaker');
+    // Both slab: everything is cut, as with no styles at all.
+    const all = buildJob([cab], {}, 'fraction', null, undefined, { door: slab, drawer: slab });
+    expect(all.materials.find(m => m.name === '3/4 2s Melamine')!.rows.filter(r => r.desc.startsWith('Door') || r.desc.startsWith('Drawer Front'))).toHaveLength(2);
+    expect(all.summary.nParts).toBe(buildJob([cab], {}).summary.nParts);
+  });
+
+  it('runs drawer and false fronts with the drawer front style grain; doors stay vertical', () => {
+    const job = buildJob([cab, { ...cab, id: 2, type: 'SB' }], {}, 'fraction', null, undefined, { door: slab, drawer: { name: 'Slab H', slab: true, grain: 'Horizontal' } });
+    const fronts = job.cabs.flatMap(c => c.fronts);
+    expect(fronts.filter(f => f.desc.startsWith('Door')).every(f => f.grain === 'Vertical')).toBe(true);
+    expect(fronts.filter(f => /Drawer Front|False Front/.test(f.desc)).every(f => f.grain === 'Horizontal')).toBe(true);
+    expect(job.doors.filter(r => r.type === 'DR').every(r => r.grain === 'Vertical' && r.cut)).toBe(true);
+    expect(job.doors.filter(r => r.type !== 'DR').every(r => r.grain === 'Horizontal')).toBe(true);
+    const row = job.materials.find(m => m.name === '3/4 2s Melamine')!.rows.find(r => r.desc.startsWith('Drawer Front'))!;
+    expect(row.grainTxt).toBe('Horizontal (along W)');
+    expect(job.d.fronts).toMatchObject({ drawerGrain: 'Horizontal', drawerFrontStyle: 'Slab H', doorSlab: true, drawerSlab: true });
+  });
+});
