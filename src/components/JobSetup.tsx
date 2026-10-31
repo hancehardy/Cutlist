@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { DEFAULT_FIELDS, DEFAULT_TEXT, DEFAULTS, type DefaultKey, type Fmt, type RawDefaults } from '@/lib/engine';
+import { DEFAULT_FIELDS, DEFAULT_TEXT, DEFAULTS, parseDim, type DefaultKey, type Fmt, type RawDefaults } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { OPTIONS, PRESETS, isCustomized, presetFor } from '@/lib/presets';
 
@@ -17,6 +17,8 @@ interface Props {
   onDefault: (k: DefaultKey, v: string) => void;
   /** Replace materials and rules with a preset's values. */
   onPreset: (key: string) => void;
+  /** Put the construction rules back to the preset, leaving materials and hardware alone. */
+  onResetRules: () => void;
   onContinue: () => void;
   /** Job has been set up before (reached via Edit setup). */
   existing: boolean;
@@ -64,8 +66,7 @@ function ChoiceField({ label, value, options, onChange }: { label: string; value
   );
 }
 
-export function JobSetup({ job, method, defaults, f, onJob, onDefault, onPreset, onContinue, existing }: Props) {
-  const [showRules, setShowRules] = useState(false);
+export function JobSetup({ job, method, defaults, f, onJob, onDefault, onPreset, onResetRules, onContinue, existing }: Props) {
   const [tried, setTried] = useState(false);
   // Bumped when a preset is applied so the dropdowns re-read their values.
   const [applied, setApplied] = useState(0);
@@ -79,8 +80,13 @@ export function JobSetup({ job, method, defaults, f, onJob, onDefault, onPreset,
     if (custom && !window.confirm(`Switch to ${presetFor(key).label}? Your changes to materials and rules will be replaced.`)) return;
     apply(key);
   };
-  const resetPreset = () => {
-    if (window.confirm(`Reset materials and rules to ${presetFor(method).label}?`)) apply(method);
+  // Reset only the construction rules to the preset's values; materials and hardware are left alone.
+  const preset = presetFor(method).values;
+  const ruleWant = (k: DefaultKey) => preset[k] ?? String(DEFAULTS[k]);
+  const rulesCustom = DEFAULT_FIELDS.some(([k]) => parseDim(ruleWant(k)) !== parseDim(defaults[k] ?? DEFAULTS[k]));
+  const resetRules = () => {
+    if (!window.confirm(`Reset construction rules to ${presetFor(method).label}? Materials and hardware are not changed.`)) return;
+    onResetRules();
   };
   const jobField = (k: keyof JobInfo, label: string, bold = false) => (
     <label className={jobLabel}>
@@ -110,8 +116,9 @@ export function JobSetup({ job, method, defaults, f, onJob, onDefault, onPreset,
         {tried && nameMissing && <div className="text-xs text-danger">Give the job a name to continue.</div>}
       </Section>
 
-      <Section step={2} title="Construction method" sub="Frameless, full-overlay fronts">
-        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }} role="radiogroup" aria-label="Construction method">
+      <Section step={2} title="Construction method" sub="Frameless, full-overlay fronts · reveals, gaps and deducts">
+        <div className="text-xs font-semibold text-muted">Start from a preset</div>
+        <div className="-mt-2 grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }} role="radiogroup" aria-label="Construction method">
           {PRESETS.map(p => {
             const sel = p.key === method;
             return (
@@ -124,6 +131,21 @@ export function JobSetup({ job, method, defaults, f, onJob, onDefault, onPreset,
             );
           })}
         </div>
+        <div className="flex items-center gap-3 border-t border-line-2 pt-3">
+          <div className="text-xs font-semibold text-muted">Construction rules (inches)</div>
+          <button onClick={resetRules} disabled={!rulesCustom}
+            className="ml-auto border-none bg-transparent p-0 text-[13px] font-semibold text-muted enabled:hover:text-ink enabled:hover:underline disabled:opacity-40">
+            Reset rules to {presetFor(method).label}
+          </button>
+        </div>
+        <div className="grid gap-x-3.5 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
+          {DEFAULT_FIELDS.map(([k, label]) => (
+            <label key={k} className="flex items-center justify-between gap-2 text-[13px] text-ink-2">
+              {label}
+              <input value={defaults[k] ?? f(DEFAULTS[k] as number)} onChange={e => onDefault(k, e.target.value)} className="field w-[76px] px-1.5 py-1.5 text-center text-[13px]" />
+            </label>
+          ))}
+        </div>
       </Section>
 
       <Section step={3} title="Materials & hardware" sub="Pick from the list or choose Other… to type your own">
@@ -132,25 +154,6 @@ export function JobSetup({ job, method, defaults, f, onJob, onDefault, onPreset,
             <ChoiceField key={`${k}-${applied}`} label={label} value={val(k)} options={OPTIONS[k]} onChange={v => onDefault(k, v)} />
           ))}
         </div>
-        <div className="flex items-center gap-3 border-t border-line-2 pt-3">
-          <button onClick={() => setShowRules(v => !v)} className="border-none bg-transparent p-0 text-[13px] font-bold text-link hover:underline">
-            {showRules ? 'Hide construction rules' : 'Show construction rules (reveals, gaps, deducts)'}
-          </button>
-          <button onClick={resetPreset} disabled={!custom}
-            className="ml-auto border-none bg-transparent p-0 text-[13px] font-semibold text-muted enabled:hover:text-ink enabled:hover:underline disabled:opacity-40">
-            Reset to {presetFor(method).label}
-          </button>
-        </div>
-        {showRules && (
-          <div className="grid gap-x-3.5 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
-            {DEFAULT_FIELDS.map(([k, label]) => (
-              <label key={k} className="flex items-center justify-between gap-2 text-[13px] text-ink-2">
-                {label}
-                <input value={defaults[k] ?? f(DEFAULTS[k] as number)} onChange={e => onDefault(k, e.target.value)} className="field w-[76px] px-1.5 py-1.5 text-center text-[13px]" />
-              </label>
-            ))}
-          </div>
-        )}
       </Section>
 
       <div className="flex items-center justify-end gap-3 pb-6">
