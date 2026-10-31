@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJob, fmt, newSection, parseDim } from './engine';
+import { buildJob, fmt, newSection, parseDim, sheetTotals } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
 import { isCustomized, presetFor } from './presets';
 
@@ -244,5 +244,29 @@ describe('panel saw optimizer', () => {
   it('flags parts larger than the trimmed sheet', () => {
     const p = plan([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }]);
     expect(p.flatMap(x => x.oversize.map(o => o.name))).toContain('Unfinished Left End');
+  });
+});
+
+describe('sheet material summary', () => {
+  it('totals the sheets of each material from the saw plans', () => {
+    const job = buildJob([
+      { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' },
+      { id: 2, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '4' },
+    ], {});
+    const t = sheetTotals(job.sawPlans);
+    expect(t.map(x => [x.name, x.sheets])).toEqual(job.sawPlans.map(p => [p.name, p.sheets.length]));
+    expect(t.reduce((n, x) => n + x.sheets, 0)).toBe(job.summary.sheets);
+    // Every placed part is counted once, on a 97 x 49 sheet, with a sane yield.
+    expect(t.reduce((n, x) => n + x.parts, 0)).toBe(job.summary.nParts);
+    for (const x of t) { expect([x.L, x.W]).toEqual([97, 49]); expect(x.yieldPct).toBeGreaterThan(0); expect(x.yieldPct).toBeLessThanOrEqual(100); expect(x.oversize).toBe(0); }
+  });
+
+  it('reports parts too big for the sheet instead of counting them', () => {
+    const job = buildJob([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }], {});
+    const caseTotal = sheetTotals(job.sawPlans).find(x => x.name === '3/4 2s Melamine')!;
+    expect(caseTotal.oversize).toBe(2);
+    // Case parts and the doors share the material; every one is either placed or listed as oversize.
+    const all = [...job.cabs[0].parts, ...job.cabs[0].fronts].filter(p => p.mat === '3/4 2s Melamine').reduce((n, p) => n + p.qty, 0);
+    expect(caseTotal.parts + caseTotal.oversize).toBe(all);
   });
 });

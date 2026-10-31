@@ -285,6 +285,17 @@ export interface SawPart {
 export interface SawCut { n: number; kind: 'trim' | 'rip' | 'cross' | 'recut'; x1: number; y1: number; x2: number; y2: number; text: string }
 export interface SawSheet { title: string; yieldTxt: string; parts: SawPart[]; cuts: SawCut[]; strips: { y: number; w: number }[] }
 export interface SawPlan { name: string; L: number; W: number; trim: number; oversize: { name: string; along: number; across: number }[]; sheets: SawSheet[] }
+/** Sheets of one material a job needs, totalled from its saw plan. */
+export interface SheetTotal { name: string; L: number; W: number; sheets: number; parts: number; yieldPct: number; oversize: number }
+export function sheetTotals(plans: SawPlan[]): SheetTotal[] {
+  return plans.map(p => {
+    const parts = p.sheets.reduce((n, s) => n + s.parts.length, 0);
+    const used = p.sheets.reduce((a, s) => a + s.parts.reduce((b, q) => b + q.along * q.across, 0), 0);
+    const total = p.sheets.length * p.L * p.W;
+    return { name: p.name, L: p.L, W: p.W, sheets: p.sheets.length, parts, yieldPct: total ? (100 * used) / total : 0, oversize: p.oversize.length };
+  });
+}
+
 export interface JobResult {
   d: Resolved; cabs: BuiltCabinet[]; materials: Material[]; doors: DoorRow[]; drawers: DrawerRow[];
   hardware: HardwareItem[]; sawPlans: SawPlan[];
