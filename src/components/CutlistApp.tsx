@@ -9,10 +9,10 @@ import { JobSetup } from './JobSetup';
 import { JobSummaryCard } from './JobSummaryCard';
 import { presetFor } from '@/lib/presets';
 import { JobsMenu } from './JobsMenu';
-import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, InstallSheet, NestSheets, type ReportCtx } from './Reports';
+import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, NestSheets, type ReportCtx } from './Reports';
 
-type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'nest' | 'install' | 'hardware';
-const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['nest', 'Nest'], ['install', 'Install'], ['hardware', 'Hardware']];
+type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'nest' | 'hardware';
+const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['nest', 'Nest'], ['hardware', 'Hardware']];
 export type SaveState = 'saved' | 'saving' | 'error';
 
 interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[] }
@@ -172,7 +172,6 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
         {show('drawers') && <DrawerListReport {...ctx} />}
         {show('assembly') && <AssemblySheets {...ctx} />}
         {show('nest') && <NestSheets {...ctx} />}
-        {show('install') && <InstallSheet {...ctx} />}
         {show('hardware') && <HardwareReport {...ctx} />}
       </div>
     </div>
