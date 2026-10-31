@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BUILTIN_CATALOG, newFace, type Material } from './engine';
 import { emptyJob, normalizeJobDoc } from './job';
 import { OPTIONS, PRESETS, isCustomized, presetFor, type Preset } from './presets';
-import { BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
+import { BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normType, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
 
 const M = (name: string, thk: string, w = '49', l = '97'): Material => ({ name, thk, w, l });
 const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
@@ -165,5 +165,15 @@ describe('cabinet catalog config', () => {
 
   it('keeps a job\'s box codes as saved', () => {
     expect(normalizeJobDoc({ cabs: [{ type: 'ZZ' }, {}] }).cabs.map(c => c.type)).toEqual(['ZZ', 'B']);
+  });
+});
+
+describe('a box posted from a job', () => {
+  it('needs a code and lands in a known category', () => {
+    const cats = BUILTIN_CATALOG.categories;
+    expect(normType({ label: 'No code' }, cats)).toBeNull();
+    expect(normType('x', cats)).toBeNull();
+    expect(normType({ code: 'B-C', cat: 'island', h: '34 1/2', d: '24', toe: '4 1/2', faces: [newFace('drawer', 'smallFront')] }, cats))
+      .toEqual({ code: 'B-C', cat: 'base', label: 'B-C', img: '', h: '34 1/2', d: '24', toe: '4 1/2', faces: [newFace('drawer', 'smallFront')] });
   });
 });

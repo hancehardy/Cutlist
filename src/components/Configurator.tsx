@@ -1,7 +1,8 @@
 'use client';
+import { useState } from 'react';
 import {
-  categoryLabel, defaultLayout, elevShapes, newSection, parseDim, typeFor,
-  type BuiltCabinet, type CabCatalog, type CabInput, type Fmt, type Hinge, type Kind, type Resolved, type SectionInput,
+  categoryLabel, defaultLayout, elevShapes, facesFromSections, newSection, parseDim, typeFor,
+  type BuiltCabinet, type CabCatalog, type CabInput, type CabType, type Fmt, type Hinge, type Kind, type Resolved, type SectionInput,
 } from '@/lib/engine';
 import { Segmented, Stepper } from './fields';
 
@@ -21,11 +22,21 @@ interface Props {
   onSelect: (id: number, sec: number) => void;
   onSelectSec: (sec: number) => void;
   onLayout: (id: number, layout: SectionInput[] | null) => void;
+  /** Save the cabinet's faces as a box in the shop catalog. Resolves to an error message, or null when saved. */
+  onSaveBox: (cabId: number, type: CabType, useIt: boolean) => Promise<string | null>;
 }
 
-export function Configurator({ cabs, built, catalog, d, f, selId, selSec: rawSec, onSelect, onSelectSec, onLayout }: Props) {
+interface SaveForm { code: string; label: string; cat: string; useIt: boolean; busy: boolean; err: string }
+const suggestCode = (base: string, taken: string[]) => {
+  let code = `${base}-C`;
+  for (let n = 2; taken.includes(code); n++) code = `${base}-C${n}`;
+  return code;
+};
+
+export function Configurator({ cabs, built, catalog, d, f, selId, selSec: rawSec, onSelect, onSelectSec, onLayout, onSaveBox }: Props) {
   const selIdx = Math.max(0, cabs.findIndex(c => c.id === selId));
   const sc = cabs[selIdx], sb = built[selIdx];
+  const [save, setSave] = useState<SaveForm | null>(null);
 
   const header = (eyebrow: string, title: string, sub = '') => (
     <div className="flex flex-wrap items-end gap-3">
@@ -150,8 +161,48 @@ export function Configurator({ cabs, built, catalog, d, f, selId, selSec: rawSec
             <div className="ml-auto flex items-center gap-2 text-xs text-muted">
               {sc.layout ? 'Custom layout' : 'Standard layout'}
               <button onClick={() => { onLayout(sc.id, null); onSelectSec(0); }} className="border-none bg-transparent p-0 text-xs font-bold text-link hover:underline">Reset</button>
+              <button onClick={() => setSave(s => (s ? null : {
+                code: suggestCode(t?.code ?? 'BOX', catalog.types.map(x => x.code)), label: `${t?.label ?? sc.type} (custom)`,
+                cat: t?.cat ?? catalog.categories[0]?.key ?? '', useIt: true, busy: false, err: '',
+              }))} className="border-none bg-transparent p-0 text-xs font-bold text-link hover:underline" aria-expanded={!!save}>Save as box…</button>
             </div>
           </div>
+          {save && (
+            <form onSubmit={async e => {
+              e.preventDefault();
+              const code = save.code.trim().toUpperCase();
+              if (!code) { setSave({ ...save, err: 'Give the box a code.' }); return; }
+              if (catalog.types.some(x => x.code === code)) { setSave({ ...save, err: `${code} is already in the catalog.` }); return; }
+              setSave({ ...save, busy: true, err: '' });
+              const type: CabType = { code, cat: save.cat, label: save.label.trim() || code, img: '', h: sc.h, d: sc.d, toe: sc.toe, faces: facesFromSections(cur, d) };
+              const err = await onSaveBox(sc.id, type, save.useIt);
+              if (err) setSave(s => (s ? { ...s, busy: false, err } : s)); else setSave(null);
+            }} className="flex flex-col gap-2 rounded-lg border border-accent bg-sel px-3 py-2.5">
+              <div className="text-[13px] font-bold">Save these faces as a box in the shop catalog</div>
+              <div className="grid gap-2" style={{ gridTemplateColumns: 'minmax(80px,0.6fr) minmax(140px,1.4fr) minmax(120px,1fr)' }}>
+                <label className="flex flex-col gap-[3px] text-[11px] font-bold tracking-[0.12em] text-muted uppercase">Code
+                  <input value={save.code} onChange={e => setSave({ ...save, code: e.target.value, err: '' })} className="field px-2 py-1.5 text-[13px] font-semibold tracking-normal text-ink normal-case" aria-label="New box code" autoFocus />
+                </label>
+                <label className="flex flex-col gap-[3px] text-[11px] font-bold tracking-[0.12em] text-muted uppercase">Name
+                  <input value={save.label} onChange={e => setSave({ ...save, label: e.target.value })} className="field px-2 py-1.5 text-[13px] tracking-normal text-ink normal-case" aria-label="New box name" />
+                </label>
+                <label className="flex flex-col gap-[3px] text-[11px] font-bold tracking-[0.12em] text-muted uppercase">Category
+                  <select value={save.cat} onChange={e => setSave({ ...save, cat: e.target.value })} className="field px-1.5 py-1.5 text-[13px] tracking-normal text-ink normal-case" aria-label="New box category">
+                    {catalog.categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-ink-2">
+                <input type="checkbox" checked={save.useIt} onChange={e => setSave({ ...save, useIt: e.target.checked })} /> Switch this cabinet to the new box
+              </label>
+              {save.err && <div className="text-xs text-danger">{save.err}</div>}
+              <div className="flex items-center gap-2">
+                <button type="submit" disabled={save.busy} className="rounded-full border-none bg-accent px-4 py-[7px] text-[13px] font-bold text-white hover:bg-accent-dk disabled:opacity-60">{save.busy ? 'Saving…' : 'Save box'}</button>
+                <button type="button" onClick={() => setSave(null)} className={pillBtn}>Cancel</button>
+                <div className="text-[11px] text-muted">Default size {sc.h} H x {sc.d} D, toe {sc.toe}, from this cabinet. Edit it later under Admin › Cabinet boxes.</div>
+              </div>
+            </form>
+          )}
           {sb.sections.map((s, i) => {
             const sel = i === selSec, store = s.kind === 'door' || s.kind === 'open';
             const step = (k: 'split' | 'shelves' | 'rollouts', dv: number, min: number, max: number) => () =>

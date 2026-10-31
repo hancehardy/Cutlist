@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_CATALOG, buildJob, defaultLayout, fmt, newFace, newSection, parseDim, resolveDefaults, type CabCatalog } from './engine';
+import { BUILTIN_CATALOG, buildJob, defaultLayout, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, type CabCatalog } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
 import { PRESETS, isCustomized, type Preset } from './presets';
 import { defaultShopConfig } from './shop';
@@ -324,3 +324,38 @@ describe('cabinet catalog', () => {
     expect(cab('W').warn).toBe('');
   });
 });
+
+describe('saving a job cabinet\'s faces as a box', () => {
+  const d = resolveDefaults();
+
+  it('turns configured sections into box faces, keeping rule heights as rules', () => {
+    const layout = [
+      newSection('drawer', '6 3/16'),            // equals the top drawer front rule
+      newSection('door', '', { shelves: 2, rollouts: 1, hinge: 'R' }),
+      newSection('drawer', '7 1/2', { split: 2 }),
+      newSection('open', '', { shelves: 1 }),
+    ];
+    const faces = facesFromSections(layout, d);
+    expect(faces.map(f => f.h)).toEqual(['smallFront', '', '7 1/2', '']);
+    expect(faces[1]).toMatchObject({ kind: 'door', split: 0, shelves: 2, rollouts: 1, hinge: 'R' });
+    expect(faces[2]).toMatchObject({ kind: 'drawer', split: 2, shelves: 0, rollouts: 0 });
+    // Round trip: resolving the saved faces gives the same sections back.
+    expect(resolveFaces(faces, d, 34.5).map(s => [s.kind, s.h, s.split, s.shelves])).toEqual([
+      ['drawer', d.smallFront, 1, 0], ['door', '', 0, 2], ['drawer', 7.5, 2, 0], ['open', '', 1, 1],
+    ]);
+    // A method with a different top drawer height moves the saved drawer with it.
+    expect(resolveFaces(faces, resolveDefaults({ smallFront: '7' }), 34.5)[0].h).toBe(7);
+  });
+
+  it('builds the same cabinet from the saved box as from the custom layout', () => {
+    const layout = [newSection('false', '6 3/16'), newSection('door', '', { shelves: 1, rollouts: 2 })];
+    const custom = buildJob([{ id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1', layout }], {}).cabs[0];
+    const catalog: CabCatalog = { ...BUILTIN_CATALOG, types: [...BUILTIN_TYPES_WITH({ code: 'B-C', cat: 'base', label: 'Saved', img: '', h: '34 1/2', d: '24', toe: '4 1/2', faces: facesFromSections(layout, d) })] };
+    const saved = buildJob([{ id: 1, type: 'B-C', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1' }], {}, 'fraction', null, catalog).cabs[0];
+    expect(saved.parts).toEqual(custom.parts);
+    expect(saved.fronts).toEqual(custom.fronts);
+    expect(saved.drawers).toEqual(custom.drawers);
+    expect(saved.hardware).toEqual(custom.hardware);
+  });
+});
+const BUILTIN_TYPES_WITH = (t: CabCatalog['types'][number]) => [...BUILTIN_CATALOG.types, t];

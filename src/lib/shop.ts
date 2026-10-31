@@ -152,6 +152,24 @@ export function normFace(raw: unknown): FaceSpec | null {
   };
 }
 
+/** Validate one box type against the given categories; null when it has no code. */
+export function normType(raw: unknown, cats: CabCategory[]): CabType | null {
+  if (!raw || typeof raw !== 'object' || !cats.length) return null;
+  const o = raw as Record<string, unknown>;
+  const code = str(o.code).trim();
+  if (!code) return null;
+  const faces = Array.isArray(o.faces) ? o.faces.map(normFace).filter((f): f is FaceSpec => !!f) : [];
+  return {
+    code,
+    cat: cats.some(c => c.key === o.cat) ? (o.cat as string) : cats[0].key,
+    label: str(o.label).trim() || code,
+    img: str(o.img).trim(),
+    h: dim(o.h, '30'), d: dim(o.d, '24'),
+    toe: (() => { const t = str(o.toe).trim(), n = parseDim(t); return isNaN(n) || n < 0 ? '0' : t; })(),
+    faces: faces.length ? faces : [newFace('door')],
+  };
+}
+
 /** Validate the cabinet catalog: unique category keys and box codes, faces cleaned up, built-ins when nothing survives. */
 export function normalizeCatalog(raw: unknown): CabCatalog {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -170,20 +188,8 @@ export function normalizeCatalog(raw: unknown): CabCatalog {
   const types: CabType[] = [];
   if (Array.isArray(r.types)) {
     for (const t of r.types) {
-      if (!t || typeof t !== 'object') continue;
-      const o = t as Record<string, unknown>;
-      const code = str(o.code).trim();
-      if (!code || types.some(x => x.code === code)) continue;
-      const faces = Array.isArray(o.faces) ? o.faces.map(normFace).filter((f): f is FaceSpec => !!f) : [];
-      types.push({
-        code,
-        cat: cats.some(c => c.key === o.cat) ? (o.cat as string) : cats[0].key,
-        label: str(o.label).trim() || code,
-        img: str(o.img).trim(),
-        h: dim(o.h, '30'), d: dim(o.d, '24'),
-        toe: (() => { const s = str(o.toe).trim(), n = parseDim(s); return isNaN(n) || n < 0 ? '0' : s; })(),
-        faces: faces.length ? faces : [newFace('door')],
-      });
+      const nt = normType(t, cats);
+      if (nt && !types.some(x => x.code === nt.code)) types.push(nt);
     }
   }
   return { categories: cats, types: types.length ? types : BUILTIN_CATALOG.types.map(t => ({ ...t, cat: cats.some(c => c.key === t.cat) ? t.cat : cats[0].key, faces: t.faces.map(f => ({ ...f })) })) };

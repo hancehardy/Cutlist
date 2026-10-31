@@ -192,6 +192,26 @@ export function resolveFaces(faces: FaceSpec[], d: Resolved, H: number): Section
   });
 }
 
+/**
+ * The reverse of resolveFaces: a cabinet's faces, as configured on a job, as box faces for the catalog.
+ * A height equal to a rule (top drawer front, tall lower door) is saved as that rule so the box follows the method.
+ */
+export function facesFromSections(layout: SectionInput[], d: Resolved): FaceSpec[] {
+  return layout.map(s => {
+    const n = parseDim(s.h);
+    const fixed = !isNaN(n) && n > 0;
+    const rule = fixed ? FACE_H_RULES.find(([k]) => Math.abs((d[k as 'smallFront' | 'tallLowerDoor'] as number) - n) < 1e-6)?.[0] : undefined;
+    return {
+      kind: s.kind,
+      h: !fixed ? '' : rule ?? (typeof s.h === 'string' ? s.h.trim() : fmt(n)),
+      split: s.kind === 'door' ? Math.max(0, +s.split || 0) : s.kind === 'drawer' ? Math.max(1, +s.split || 1) : 1,
+      shelves: s.kind === 'door' || s.kind === 'open' ? Math.max(0, +s.shelves || 0) : 0,
+      rollouts: s.kind === 'door' || s.kind === 'open' ? Math.max(0, +s.rollouts || 0) : 0,
+      hinge: s.hinge === 'R' ? 'R' : 'L',
+    };
+  });
+}
+
 /** The standard layout of a box type; an unknown type gets the catalog's first box. */
 export function defaultLayout(type: string, d: Resolved, H: number, catalog: CabCatalog = BUILTIN_CATALOG): SectionInput[] {
   const t = typeFor(catalog, type) ?? catalog.types[0];

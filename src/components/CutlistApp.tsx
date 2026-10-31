@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { RULE_FIELDS, buildJob, makeFmt, parseDim, typeFor, typesIn, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
+import { RULE_FIELDS, buildJob, makeFmt, parseDim, typeFor, typesIn, type CabInput, type CabType, type DefaultKey, type SectionInput } from '@/lib/engine';
 import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
 import type { ShopConfig } from '@/lib/shop';
 import { CabinetList } from './CabinetList';
@@ -17,11 +17,13 @@ import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, Hardwa
 type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'hardware';
 const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['hardware', 'Hardware']];
 
-interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; shop: ShopConfig }
+interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; initialShop: ShopConfig }
 
-export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
+export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop }: Props) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
+  // The shop config as loaded, plus any boxes saved from this job's configurator.
+  const [shop, setShop] = useState(initialShop);
   const [tab, setTab] = useState<Tab>('config');
   const [selId, setSelId] = useState<number | null>(initialDoc.cabs[0]?.id ?? null);
   const [selSec, setSelSec] = useState(0);
@@ -65,6 +67,17 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
   const selCabId = (cabs.find(c => c.id === selId) || cabs[0])?.id;
 
   const openJob = async (id: string) => { await save.flush(); router.push(`/?job=${id}`); };
+
+  /** Save a cabinet's faces as a box in the shop catalog; optionally switch the cabinet onto it. Returns an error message or null. */
+  const saveBox = async (cabId: number, type: CabType, useIt: boolean): Promise<string | null> => {
+    const res = await fetch('/api/shop/types', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(type) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return data.error || 'Could not save the box.';
+    const saved: CabType = data.type;
+    setShop(s => ({ ...s, catalog: { ...s.catalog, types: [...s.catalog.types, saved] } }));
+    if (useIt) upd(cabId, { type: saved.code, layout: null });
+    return null;
+  };
 
   const headerTxt = `Created for ${job.client} | ${job.name} | ${job.catalog} · ${today}`;
   const ctx: ReportCtx = { r: result, f, job, today, headerTxt, footerTxt: `Shop packet for mill — not a Cabinet Vision file. Confirm banding. ${job.name}` };
@@ -140,7 +153,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
         {show('config') && (
           <Configurator cabs={cabs} built={result.cabs} catalog={shop.catalog} d={result.d} f={f} selId={selCabId ?? null} selSec={selSec}
             onSelect={select} onSelectSec={setSelSec}
-            onLayout={(id, layout: SectionInput[] | null) => upd(id, { layout })} />
+            onLayout={(id, layout: SectionInput[] | null) => upd(id, { layout })} onSaveBox={saveBox} />
         )}
         {show('cut') && <CutListReport {...ctx} />}
         {show('doors') && <DoorListReport {...ctx} />}
