@@ -1,5 +1,5 @@
 import type { CabInput, DimFormat, Kind, RawDefaults, SectionInput } from './engine';
-import { TYPES } from './engine';
+import { DEFAULTS, TYPES } from './engine';
 import { DEFAULT_PRESET, PRESETS } from './presets';
 
 export interface JobInfo { name: string; client: string; catalog: string; drawn: string }
@@ -66,6 +66,8 @@ export function normalizeJobDoc(raw: unknown): JobDoc {
   const defaults: RawDefaults = {};
   if (r.defaults && typeof r.defaults === 'object') {
     for (const [k, v] of Object.entries(r.defaults as Record<string, unknown>)) {
+      // Rules the app no longer has (such as the old wall top height) are dropped.
+      if (!(k in DEFAULTS)) continue;
       if (typeof v === 'string' || typeof v === 'number') (defaults as Record<string, string>)[k] = String(v);
     }
   }

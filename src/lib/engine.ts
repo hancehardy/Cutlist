@@ -81,7 +81,7 @@ export const DEFAULTS = {
   glideSeries: '563H', glideLens: '9, 12, 15, 18, 21', glideDeduct: 3,
   kerf: 0.187, sheetL: 97, sheetW: 49,
   caseMat: '3/4 2s Melamine', backMat: '1/4 1s Melamine', frontMat: '3/4 2s Melamine',
-  doorSplit: 24, tallLowerDoor: 30, wallTop: 96, pull: '4in C-Pull', hinge: 'Blum 110° Clip-top', shelfSetback: 1, shelfClear: 0.0625,
+  doorSplit: 24, tallLowerDoor: 30, pull: '4in C-Pull', hinge: 'Blum 110° Clip-top', shelfSetback: 1, shelfClear: 0.0625,
   drawerStyle: '5 Piece Drawer', doorStyle: 'Slab (Melamine)',
 };
 type DefaultsShape = typeof DEFAULTS;
@@ -93,7 +93,7 @@ export const DEFAULT_FIELDS: [DefaultKey, string][] = [
   ['frontGap', 'Gap between fronts'], ['sideReveal', 'Side reveal (each)'], ['topReveal', 'Top reveal'], ['bottomReveal', 'Bottom reveal'],
   ['smallFront', 'Top drawer front height'], ['boxDeduct', 'Drawer box width deduct'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
   ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
-  ['glideDeduct', 'Glide deduct from depth'], ['doorSplit', 'Two doors above width'], ['tallLowerDoor', 'Tall lower door height'], ['wallTop', 'Wall cabinet top height'],
+  ['glideDeduct', 'Glide deduct from depth'], ['doorSplit', 'Two doors above width'], ['tallLowerDoor', 'Tall lower door height'],
   ['shelfSetback', 'Shelf setback'], ['kerf', 'Kerf'], ['sheetL', 'Sheet length'], ['sheetW', 'Sheet width'],
 ];
 export const DEFAULT_TEXT: [DefaultKey, string][] = [
@@ -277,14 +277,9 @@ export interface NestPart {
 }
 export interface NestSheet { title: string; yieldTxt: string; parts: NestPart[] }
 export interface Nest { name: string; L: number; W: number; oversize: { name: string; along: number; across: number }[]; sheets: NestSheet[] }
-export interface InstallItem {
-  idx: number; code: string; x: number; y: number; w: number; h: number; toe: number;
-  tx: number; ty: number; wTxt: string; wall: boolean; boxH: number; boxTop: number; dTxt: string;
-}
-export interface Install { items: InstallItem[]; totalW: number; viewBox: string; floorY: number; totalTxt: string; labelSize: number }
 export interface JobResult {
   d: Resolved; cabs: BuiltCabinet[]; materials: Material[]; doors: DoorRow[]; drawers: DrawerRow[];
-  hardware: HardwareItem[]; nests: Nest[]; install: Install;
+  hardware: HardwareItem[]; nests: Nest[];
   summary: { nParts: number; nFronts: number; nDrawers: number; sheets: number };
 }
 
@@ -340,10 +335,9 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
   }
   const hardware = Object.values(hw);
   const nests = materials.map(m => nestMaterial(m, built, d, f));
-  const install = installLayout(built, d, f);
   const nFronts = doors.reduce((s, r) => s + r.qty, 0), nDrawers = drawers.reduce((s, r) => s + r.qty, 0);
   const nParts = materials.reduce((s, m) => s + m.rows.reduce((t, r) => t + r.qty, 0), 0);
-  return { d, cabs: built, materials, doors, drawers, hardware, nests, install, summary: { nParts, nFronts, nDrawers, sheets: nests.reduce((s, n) => s + n.sheets.length, 0) } };
+  return { d, cabs: built, materials, doors, drawers, hardware, nests, summary: { nParts, nFronts, nDrawers, sheets: nests.reduce((s, n) => s + n.sheets.length, 0) } };
 }
 
 // Grain-locked row packer: parts are never rotated.
@@ -400,26 +394,6 @@ function nestMaterial(m: Material, built: BuiltCabinet[], d: Resolved, f: Fmt): 
         })),
       };
     }),
-  };
-}
-
-function installLayout(built: BuiltCabinet[], d: Resolved, f: Fmt): Install {
-  const good = built.filter(c => !c.bad);
-  const gap = 1;
-  let x = 0;
-  const items: InstallItem[] = [];
-  // Drawing top sits at the highest cabinet top; floor is below it.
-  const top = Math.max(96, d.wallTop, ...good.map(c => c.H));
-  for (const c of good) for (let q = 0; q < c.qty; q++) {
-    const y = c.isWall ? top - d.wallTop : top - c.H;
-    items.push({ idx: c.idx, code: c.code, x, y, w: c.W, h: c.H, toe: c.toe, tx: x + c.W / 2, ty: y + c.H / 2, wTxt: `${f(c.W)}"`, wall: c.isWall, boxH: c.boxH, boxTop: y, dTxt: `Depth ${f(c.D)}"` });
-    x += c.W + gap;
-  }
-  const totalW = Math.max(x - gap, 24);
-  const labelSize = Math.max(2.2, totalW / 45), headroom = labelSize * 2.2 + 1;
-  return {
-    items, totalW, viewBox: `-2 ${-headroom} ${totalW + 4} ${top + headroom + labelSize * 3.5}`, floorY: top,
-    totalTxt: `Total ${f(totalW - (items.length - 1) * gap)}"`, labelSize,
   };
 }
 

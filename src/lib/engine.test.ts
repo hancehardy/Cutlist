@@ -109,14 +109,6 @@ describe('shop rules', () => {
     expect(job.cabs[0].sections[0].h).toBeGreaterThan(13);
     expect(job.drawers[0].h).toBe(10);
   });
-
-  it('hangs wall cabinets at the wall top height (default 96")', () => {
-    const cabs = [{ id: 1, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' }];
-    const at = (raw: Record<string, string>) => { const i = buildJob(cabs, raw).install; return i.floorY - i.items[0].y; };
-    expect(at({})).toBe(96);
-    expect(at({ wallTop: '84' })).toBe(84);
-    expect(at({ wallTop: '102' })).toBe(102);
-  });
 });
 
 describe('normalizeJobDoc', () => {
@@ -136,6 +128,12 @@ describe('job setup', () => {
     expect(emptyJob().setupDone).toBe(false);
     expect(normalizeJobDoc({ cabs: [] }).setupDone).toBe(true);
     expect(normalizeJobDoc({ cabs: [], setupDone: false }).setupDone).toBe(false);
+  });
+
+  it('drops rules the app no longer has (e.g. the old wall top height)', () => {
+    const doc = normalizeJobDoc({ cabs: [], defaults: { wallTop: '84', pull: 'Knob' } });
+    expect(doc.defaults).toEqual({ pull: 'Knob' });
+    expect(isCustomized(doc.method, normalizeJobDoc({ cabs: [], defaults: { wallTop: '84' } }).defaults)).toBe(false);
   });
 
   it('falls back to the standard preset for unknown methods', () => {
