@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { TYPES, buildJob, configsFor, makeFmt, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
+import { DEFAULT_FIELDS, TYPES, buildJob, configsFor, makeFmt, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
 import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
 import { CabinetList } from './CabinetList';
 import { Configurator } from './Configurator';
@@ -119,6 +119,11 @@ export function CutlistApp({ jobId, initialDoc, initialJobs }: Props) {
           onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
           onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}
           onPreset={key => setDoc(d => ({ ...d, method: key, defaults: { ...presetFor(key).values } }))}
+          onResetRules={() => setDoc(d => {
+            const next = { ...d.defaults }, p = presetFor(d.method).values;
+            for (const [k] of DEFAULT_FIELDS) { if (p[k] !== undefined) next[k] = p[k]; else delete next[k]; }
+            return { ...d, defaults: next };
+          })}
           onContinue={() => { setDoc(d => (d.setupDone ? d : { ...d, setupDone: true })); setView('items'); window.scrollTo(0, 0); }} />
       </div>
     );
