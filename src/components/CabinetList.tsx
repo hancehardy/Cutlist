@@ -2,7 +2,7 @@
 import { categoryLabel, parseDim, typeFor, typesIn, type BuiltCabinet, type CabCatalog, type CabInput, type Fmt, type Resolved } from '@/lib/engine';
 import { TypeThumb } from './Elevation';
 
-const COLS = '28px minmax(84px,0.9fr) minmax(120px,1.5fr) repeat(4,minmax(58px,1fr)) 46px 28px';
+const COLS = '28px minmax(84px,0.9fr) minmax(120px,1.5fr) repeat(4,minmax(58px,1fr)) 28px';
 const dimInput = 'field min-w-0 px-2 py-2 text-center text-sm tabular-nums';
 
 interface Props {
@@ -19,11 +19,13 @@ interface Props {
   onCategory: (id: number, cat: string) => void;
   onPick: (id: number, type: string) => void;
   onConfigure: (id: number) => void;
+  /** Insert a copy of the cabinet right below it. */
+  onDuplicate: (id: number) => void;
   onRemove: (id: number) => void;
   onAdd: () => void;
 }
 
-export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdate, onTogglePick, onCategory, onPick, onConfigure, onRemove, onAdd }: Props) {
+export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdate, onTogglePick, onCategory, onPick, onConfigure, onDuplicate, onRemove, onAdd }: Props) {
   const bad = (v: string) => isNaN(parseDim(v)) || parseDim(v) <= 0;
   const blur = (id: number, k: 'w' | 'h' | 'd' | 'toe') => (e: React.FocusEvent<HTMLInputElement>) => {
     const v = parseDim(e.target.value);
@@ -36,7 +38,7 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
         <div className="text-[13px] text-muted">Sizes in inches — type 14 7/8 or 14.875</div>
       </div>
       <div className="grid items-center gap-1.5 px-0.5 text-[11px] font-bold tracking-[0.12em] text-muted uppercase" style={{ gridTemplateColumns: COLS }}>
-        <div>#</div><div>Type</div><div>Configuration</div><div>Width</div><div>Height</div><div>Depth</div><div>Toe</div><div>Qty</div><div />
+        <div>#</div><div>Type</div><div>Configuration</div><div>Width</div><div>Height</div><div>Depth</div><div>Toe</div><div />
       </div>
       {cabs.length === 0 && <div className="rounded-lg bg-canvas px-4 py-6 text-center text-sm text-muted">No cabinets yet. Add one to start the cut list.</div>}
       {cabs.map((c, i) => {
@@ -62,7 +64,6 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
             <input value={c.h} onChange={e => onUpdate(c.id, { h: e.target.value })} onBlur={blur(c.id, 'h')} className={`${dimInput} ${bad(c.h) ? 'field-bad' : ''}`} aria-label="Height" />
             <input value={c.d} onChange={e => onUpdate(c.id, { d: e.target.value })} onBlur={blur(c.id, 'd')} className={`${dimInput} ${bad(c.d) ? 'field-bad' : ''}`} aria-label="Depth" />
             <input value={c.toe} onChange={e => onUpdate(c.id, { toe: e.target.value })} onBlur={blur(c.id, 'toe')} className={dimInput} aria-label="Toe" />
-            <input value={c.qty} onChange={e => onUpdate(c.id, { qty: e.target.value })} className="field min-w-0 px-1.5 py-2 text-center text-sm" aria-label="Quantity" />
             <button onClick={() => onRemove(c.id)} title="Remove" className="h-8 w-7 rounded-md border-none bg-transparent text-lg text-faint hover:bg-canvas hover:text-danger">×</button>
             {picking && (
               <div className="col-span-full flex flex-col gap-2 rounded-lg border border-line bg-canvas p-2.5">
@@ -85,8 +86,9 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
             )}
             <div className="-mt-0.5 flex items-start gap-2.5" style={{ gridColumn: '2 / -1' }}>
               <div className="min-w-0 flex-1 text-xs text-pretty text-muted">
-                {b.code} — {b.bad ? 'enter width, height and depth' : `${f(b.W)} x ${f(b.H)} x ${f(b.D)}`}{fronts}
+                {b.code} — {b.bad ? 'enter width, height and depth' : `${f(b.W)} x ${f(b.H)} x ${f(b.D)}`}{b.qty > 1 ? ` · ×${b.qty} (saved before one-per-row entry)` : ''}{fronts}
               </div>
+              <button onClick={() => onDuplicate(c.id)} title="Add a copy of this cabinet below" className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Duplicate</button>
               <button onClick={() => onConfigure(c.id)} className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Configure</button>
             </div>
           </div>

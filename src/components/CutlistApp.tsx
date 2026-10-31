@@ -149,6 +149,17 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
           onCategory={(id, cat) => { const first = typesIn(shop.catalog, cat)[0]; if (first) setType(id, first.code); setPickId(id); }}
           onPick={(id, type) => { setType(id, type); setPickId(null); select(id); setTab('config'); }}
           onConfigure={id => { select(id); setTab('config'); }}
+          onDuplicate={id => {
+            const nextId = Math.max(0, ...cabs.map(c => c.id)) + 1;
+            setCabs(cs => {
+              const i = cs.findIndex(c => c.id === id);
+              if (i < 0) return cs;
+              const src = cs[i];
+              const copy: CabInput = { ...src, id: nextId, layout: src.layout ? src.layout.map(s => ({ ...s })) : null };
+              return [...cs.slice(0, i + 1), copy, ...cs.slice(i + 1)];
+            });
+            select(nextId);
+          }}
           onRemove={id => setCabs(cs => cs.filter(x => x.id !== id))}
           onAdd={() => {
             const t = shop.catalog.types[0], id = Math.max(0, ...cabs.map(c => c.id)) + 1;
