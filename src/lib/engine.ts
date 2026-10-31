@@ -144,7 +144,8 @@ export function defaultLayout(type: string, d: Resolved, H: number): SectionInpu
 }
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 
-export interface Part { qty: number; desc: string; w: number; l: number; grain: Grain; mat: string }
+/** `band` is the lineal inches of edge banding on one part: fronts all round, case parts along the exposed edge, backs and nailers none. */
+export interface Part { qty: number; desc: string; w: number; l: number; grain: Grain; mat: string; band: number }
 export interface DrawerBox { qty: number; kind: 'Drawer' | 'Roll-out'; w: number; dp: number; h: number; sec: string }
 export interface HardwareItem { qty: number; item: string; spec: string }
 export interface Piece { x: number; w: number }
@@ -175,23 +176,24 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const thk = d.caseThk, boxH = H - toe, inW = W - 2 * thk;
   const isWall = t.cat === 'wall', isTall = t.cat === 'tall';
   out.boxH = boxH; out.isWall = isWall; out.isTall = isTall;
-  const P = (qty: number, desc: string, w: number, l: number, grain: Grain, mat: string) => out.parts.push({ qty, desc, w, l, grain, mat });
-  const F = (qty: number, desc: string, w: number, l: number) => out.fronts.push({ qty, desc, w, l, grain: 'Vertical', mat: d.frontMat });
+  const P = (qty: number, desc: string, w: number, l: number, grain: Grain, mat: string, band = 0) => out.parts.push({ qty, desc, w, l, grain, mat, band });
+  const F = (qty: number, desc: string, w: number, l: number) => out.fronts.push({ qty, desc, w, l, grain: 'Vertical', mat: d.frontMat, band: 2 * (w + l) });
   const layout = c.layout && c.layout.length ? c.layout : defaultLayout(c.type, d, H);
   // Case
-  P(1, 'Unfinished Left End', D, boxH, 'Vertical', d.caseMat);
-  P(1, 'Unfinished Right End', D, boxH, 'Vertical', d.caseMat);
+  // Edge banding: the front edge of ends, decks, tops, shelves and partitions, the long edge of stretchers.
+  P(1, 'Unfinished Left End', D, boxH, 'Vertical', d.caseMat, boxH);
+  P(1, 'Unfinished Right End', D, boxH, 'Vertical', d.caseMat, boxH);
   // Frameless back: captured in a groove on all four sides, set in from the rear edge so
   // nailers fit behind it. Usable depth inside the box stops at the back's front face.
   const inD = D - d.backInset - d.backThk;
   P(1, 'Unfinished Back', inW + 2 * d.backGroove, boxH - 2 * thk + 2 * d.backGroove, 'Vertical', d.backMat);
-  P(1, isWall ? 'Bottom' : 'Deck', D, inW, 'Horizontal', d.caseMat);
+  P(1, isWall ? 'Bottom' : 'Deck', D, inW, 'Horizontal', d.caseMat, inW);
   if (isWall || isTall) {
-    P(1, 'Top', D, inW, 'Horizontal', d.caseMat);
+    P(1, 'Top', D, inW, 'Horizontal', d.caseMat, inW);
     P(isWall ? 2 : 1, 'Nailer', d.stretcherW, inW, 'Vertical', d.caseMat);
   } else {
     P(1, 'Nailer', d.stretcherW, inW, 'Vertical', d.caseMat);
-    P(2, 'Top Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat);
+    P(2, 'Top Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat, inW);
   }
   // Faces
   const gap = d.frontGap, openH = boxH - d.topReveal - d.bottomReveal, frontW = W - 2 * d.sideReveal;
@@ -225,7 +227,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
       const openW = (inW - (n - 1) * thk) / n;
       const bh = h < 7 ? d.smallBoxH : h < 10 ? Math.min(6, d.bigBoxH) : h < 13 ? d.bigBoxH : d.xlBoxH;
       out.drawers.push({ qty: n, kind: 'Drawer', w: openW - (d.boxDeduct - 2 * thk), dp: glide, h: bh, sec: tag });
-      if (n > 1) P(n - 1, 'Drawer Partition', inD, h + gap, 'Vertical', d.caseMat);
+      if (n > 1) P(n - 1, 'Drawer Partition', inD, h + gap, 'Vertical', d.caseMat, h + gap);
       drawerPulls += n; drawerCount += n;
     }
     if (s.kind === 'door') { doorPulls += n; hinges += n * (h > 60 ? 4 : h > 40 ? 3 : 2); }
@@ -246,9 +248,9 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
     y += h + gap;
   });
   if (!isWall && !isTall && layout.some(s => s.kind === 'drawer')) drawerStretch = Math.max(drawerStretch, 1);
-  if (drawerStretch) P(drawerStretch, 'Drawer Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat);
-  if (fixedShelves) P(fixedShelves, 'Fixed Shelf', inD, inW, 'Horizontal', d.caseMat);
-  if (shelves) P(shelves, 'Adjustable Shelf', shelfD, shelfW, 'Horizontal', d.caseMat);
+  if (drawerStretch) P(drawerStretch, 'Drawer Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat, inW);
+  if (fixedShelves) P(fixedShelves, 'Fixed Shelf', inD, inW, 'Horizontal', d.caseMat, inW);
+  if (shelves) P(shelves, 'Adjustable Shelf', shelfD, shelfW, 'Horizontal', d.caseMat, shelfW);
   // Hardware
   const spec = `${d.glideSeries}${Math.round(glide * 25.4)}0B ${f(glide)}"`;
   if (drawerPulls) out.hardware.push({ qty: drawerPulls, item: 'Drawer Pull', spec: d.pull });
@@ -270,7 +272,8 @@ function glideLen(D: number, d: Resolved) {
 }
 
 export interface MaterialRow { desc: string; w: number; l: number; grain: Grain; qty: number; cabs: string[]; size: string; grainTxt: string; cabsTxt: string }
-export interface Material { name: string; rows: MaterialRow[]; rips: string }
+/** `bandLf`: estimated lineal feet of edge banding on this material's parts. */
+export interface Material { name: string; rows: MaterialRow[]; rips: string; bandLf: number }
 export interface DoorRow { w: number; l: number; type: 'DR' | 'FF' | 'DF'; qty: number; cabs: string[]; size: string; cabsTxt: string }
 export interface DrawerRow extends DrawerBox { cabs: string[]; wTxt: string; dTxt: string; hTxt: string; cabsTxt: string }
 /** A part placed on a sheet. Drawing coordinates: x along the sheet length (grain), y across its width. */
@@ -286,13 +289,13 @@ export interface SawCut { n: number; kind: 'trim' | 'rip' | 'cross' | 'recut'; x
 export interface SawSheet { title: string; yieldTxt: string; parts: SawPart[]; cuts: SawCut[]; strips: { y: number; w: number }[] }
 export interface SawPlan { name: string; L: number; W: number; trim: number; oversize: { name: string; along: number; across: number }[]; sheets: SawSheet[] }
 /** Sheets of one material a job needs, totalled from its saw plan. */
-export interface SheetTotal { name: string; L: number; W: number; sheets: number; parts: number; yieldPct: number; oversize: number }
-export function sheetTotals(plans: SawPlan[]): SheetTotal[] {
+export interface SheetTotal { name: string; L: number; W: number; sheets: number; parts: number; yieldPct: number; oversize: number; bandLf: number }
+export function sheetTotals(plans: SawPlan[], groups: Material[] = []): SheetTotal[] {
   return plans.map(p => {
     const parts = p.sheets.reduce((n, s) => n + s.parts.length, 0);
     const used = p.sheets.reduce((a, s) => a + s.parts.reduce((b, q) => b + q.along * q.across, 0), 0);
     const total = p.sheets.length * p.L * p.W;
-    return { name: p.name, L: p.L, W: p.W, sheets: p.sheets.length, parts, yieldPct: total ? (100 * used) / total : 0, oversize: p.oversize.length };
+    return { name: p.name, L: p.L, W: p.W, sheets: p.sheets.length, parts, yieldPct: total ? (100 * used) / total : 0, oversize: p.oversize.length, bandLf: groups.find(g => g.name === p.name)?.bandLf ?? 0 };
   });
 }
 
@@ -308,16 +311,17 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
   const f = makeFmt(mode);
   const d = resolveDefaults(rawDefaults);
   const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f));
-  const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number> }> = {};
+  const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number>; band: number }> = {};
   const key = (p: Part) => `${p.desc}|${p.w}|${p.l}|${p.grain}`;
   for (const cb of built) {
     if (cb.bad) continue;
     for (const p of [...cb.parts, ...cb.fronts]) {
-      const m = byMat[p.mat] || (byMat[p.mat] = { name: p.mat, rows: {}, rips: {} });
+      const m = byMat[p.mat] || (byMat[p.mat] = { name: p.mat, rows: {}, rips: {}, band: 0 });
       const k = key(p), q = p.qty * cb.qty;
       const r = m.rows[k] || (m.rows[k] = { desc: p.desc, w: p.w, l: p.l, grain: p.grain, qty: 0, cabs: [] });
       r.qty += q; r.cabs.push(cabRef(cb.idx, q));
       m.rips[p.w] = (m.rips[p.w] || 0) + (q * (p.l + d.kerf)) / 12;
+      m.band += q * p.band;
     }
   }
   const order = [d.backMat, d.caseMat, d.frontMat];
@@ -327,6 +331,7 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
       ...r, size: `${f(r.w)} x ${f(r.l)}`, grainTxt: r.grain === 'Vertical' ? 'Vertical (along L)' : 'Horizontal (along W)', cabsTxt: r.cabs.join(', '),
     })),
     rips: Object.entries(m.rips).sort((a, b) => +b[0] - +a[0]).map(([w, lf]) => `${f(+w)}": ${lf.toFixed(1)} lf`).join('   '),
+    bandLf: m.band / 12,
   }));
   const doorRows: Record<string, Omit<DoorRow, 'size' | 'cabsTxt'>> = {};
   const drawerRows: Record<string, DrawerBox & { cabs: string[] }> = {};

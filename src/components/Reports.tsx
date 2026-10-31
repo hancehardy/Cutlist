@@ -221,22 +221,25 @@ export function HardwareReport({ r, headerTxt, footerTxt }: ReportCtx) {
 
 /** Full sheets of each material to pull for the job, from the panel saw plans. */
 export function SheetSummaryReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
-  const rows = sheetTotals(r.sawPlans);
-  const sheets = rows.reduce((n, x) => n + x.sheets, 0), parts = rows.reduce((n, x) => n + x.parts, 0);
+  const rows = sheetTotals(r.sawPlans, r.materials);
+  const sheets = rows.reduce((n, x) => n + x.sheets, 0), parts = rows.reduce((n, x) => n + x.parts, 0), band = rows.reduce((n, x) => n + x.bandLf, 0);
+  const lf = (n: number) => `${n.toFixed(1)} lf`;
   const oversize = r.sawPlans.flatMap(p => p.oversize.map(o => `${o.name} ${f(o.along)} x ${f(o.across)} (${p.name})`));
   return (
     <Card title="Sheet Material Summary" sub={headerTxt}>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
         <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{sheets}</span> <span className="text-sm text-muted">sheet{sheets === 1 ? '' : 's'} total</span></div>
         <div className="text-[13px] text-muted">{rows.length} material{rows.length === 1 ? '' : 's'} · {parts} parts placed</div>
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{band.toFixed(0)}</span> <span className="text-sm text-muted">lf edge banding, estimated</span></div>
       </div>
       <div className="mt-1 text-xs text-muted">
-        Counted from the panel saw plans on the Optimize tab: kerf {f(r.d.kerf)}&quot;, {f(r.d.edgeTrim)}&quot; trimmed off one long and one short edge, parts never rotated. Yield is the share of the sheets covered by parts.
+        Sheets are counted from the panel saw plans on the Optimize tab: kerf {f(r.d.kerf)}&quot;, {f(r.d.edgeTrim)}&quot; trimmed off one long and one short edge, parts never rotated. Yield is the share of the sheets covered by parts.
+        Edge banding counts all four edges of doors, drawer fronts and false fronts, and the exposed edge of ends, decks, tops, shelves, partitions and stretchers; backs and nailers are not banded. Add your usual overage.
       </div>
-      <Table cols="minmax(150px,2fr) minmax(90px,1fr) minmax(64px,0.7fr) minmax(64px,0.7fr) minmax(64px,0.7fr)" heads={['Material', 'Sheet size', 'Sheets', 'Parts', 'Yield']}
+      <Table cols="minmax(150px,2fr) minmax(90px,1fr) minmax(64px,0.7fr) minmax(64px,0.7fr) minmax(64px,0.7fr) minmax(90px,0.9fr)" heads={['Material', 'Sheet size', 'Sheets', 'Parts', 'Yield', 'Edge banding']}
         rows={[
-          ...rows.map(x => ({ key: x.name, cells: [{ v: x.name, c: 'font-semibold' }, { v: `${f(x.W)} x ${f(x.L)}` }, { v: x.sheets, c: 'font-bold tabular-nums' }, { v: x.parts, c: 'tabular-nums' }, { v: `${x.yieldPct.toFixed(1)}%`, c: 'tabular-nums' }] })),
-          { key: '__total', cells: [{ v: 'Total', c: 'font-bold' }, { v: '' }, { v: sheets, c: 'font-bold tabular-nums' }, { v: parts, c: 'tabular-nums' }, { v: '' }] },
+          ...rows.map(x => ({ key: x.name, cells: [{ v: x.name, c: 'font-semibold' }, { v: `${f(x.W)} x ${f(x.L)}` }, { v: x.sheets, c: 'font-bold tabular-nums' }, { v: x.parts, c: 'tabular-nums' }, { v: `${x.yieldPct.toFixed(1)}%`, c: 'tabular-nums' }, { v: lf(x.bandLf), c: 'tabular-nums' }] })),
+          { key: '__total', cells: [{ v: 'Total', c: 'font-bold' }, { v: '' }, { v: sheets, c: 'font-bold tabular-nums' }, { v: parts, c: 'tabular-nums' }, { v: '' }, { v: lf(band), c: 'font-bold tabular-nums' }] },
         ]} />
       {oversize.length > 0 && (
         <div className="mt-3 rounded-lg bg-err-bg px-3 py-2 text-xs text-err">
