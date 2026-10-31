@@ -117,6 +117,7 @@ export function AssemblySheets({ r, f, job, today }: ReportCtx) {
                 <div><span className="text-muted">Toe height</span> {f(c.toe)}</div>
                 <div><span className="text-muted">Toe recess</span> {f(r.d.toeRecess)}</div>
                 <div><span className="text-muted">Back / Ends</span> Unfinished</div>
+                <div className="col-span-full"><span className="text-muted">Back</span> {f(r.d.backThk)}&quot; captured in {f(r.d.backGroove)}&quot; grooves all four sides, set in {f(r.d.backInset)}&quot; from the rear</div>
                 <div><span className="text-muted">Scribe / Stile</span> 0</div>
                 <div className="col-span-full text-muted">{c.toe > 0 ? 'Toe is a separate assembly — box height excludes toe.' : 'No toe kick — floor-set box.'}</div>
               </div>

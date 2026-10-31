@@ -152,6 +152,33 @@ describe('job setup', () => {
   });
 });
 
+describe('captured back, set in 3/4"', () => {
+  const part = (job: ReturnType<typeof buildJob>, desc: string) => job.cabs[0].parts.find(p => p.desc === desc)!;
+
+  it('sizes the back to the opening plus a 3/8" groove all round', () => {
+    const job = buildJob([{ id: 1, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' }], {});
+    // inside 28 1/2 + 3/4 by inside 28 1/2 + 3/4
+    expect([part(job, 'Unfinished Back').w, part(job, 'Unfinished Back').l]).toEqual([29.25, 29.25]);
+    const deeper = buildJob([{ id: 1, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' }], { backGroove: '1/4' });
+    expect(part(deeper, 'Unfinished Back').w).toBe(29);
+  });
+
+  it('stops shelves, partitions and spacers at the front of the back', () => {
+    const wall = buildJob([{ id: 1, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' }], {});
+    // 12 - 3/4 inset - 1/4 back - 1 setback
+    expect(part(wall, 'Adjustable Shelf').w).toBe(10);
+    const base = buildJob([{ id: 1, type: 'BD', w: '30', h: '34.5', d: '24', toe: '4.5', qty: '1',
+      layout: [newSection('drawer', '6', { split: 2 }), newSection('door', '', { rollouts: 1 })] }], {});
+    expect(part(base, 'Drawer Partition').w).toBe(23);
+    expect(base.cabs[0].hardware.find(h => h.item === 'Roll-out Spacer')!.spec).toBe('1 x 3 x 22');
+  });
+
+  it('keeps ends, deck and top full depth', () => {
+    const wall = buildJob([{ id: 1, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1' }], {});
+    expect(['Unfinished Left End', 'Bottom', 'Top'].map(dsc => part(wall, dsc).w)).toEqual([12, 12, 12]);
+  });
+});
+
 describe('panel saw optimizer', () => {
   const plan = (cabs: Parameters<typeof buildJob>[0], raw = {}) => buildJob(cabs, raw).sawPlans;
   const kitchen = [
