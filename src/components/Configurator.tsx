@@ -1,8 +1,9 @@
 'use client';
 import {
-  TYPES, categoryLabel, defaultLayout, elevShapes, newSection, parseDim,
-  type BuiltCabinet, type CabInput, type Fmt, type Hinge, type Kind, type Resolved, type SectionInput,
+  categoryLabel, defaultLayout, elevShapes, newSection, parseDim, typeFor,
+  type BuiltCabinet, type CabCatalog, type CabInput, type Fmt, type Hinge, type Kind, type Resolved, type SectionInput,
 } from '@/lib/engine';
+import { Segmented, Stepper } from './fields';
 
 const KINDS: [Kind, string][] = [['drawer', 'Drawer'], ['door', 'Door'], ['false', 'False'], ['open', 'Open']];
 const pillBtn = 'rounded-full border border-rule bg-white px-3 py-[7px] text-[13px] font-bold text-ink hover:border-ink';
@@ -12,6 +13,7 @@ const iconBtn = 'h-7 w-7 rounded-md border-none bg-transparent text-sm text-mute
 interface Props {
   cabs: CabInput[];
   built: BuiltCabinet[];
+  catalog: CabCatalog;
   d: Resolved;
   f: Fmt;
   selId: number | null;
@@ -21,31 +23,7 @@ interface Props {
   onLayout: (id: number, layout: SectionInput[] | null) => void;
 }
 
-function Segmented<T extends string>({ opts, value, onChange }: { opts: [T, string][]; value: T; onChange: (v: T) => void }) {
-  return (
-    <div className="flex overflow-hidden rounded-lg border border-rule">
-      {opts.map(([k, label]) => (
-        <button key={k} onClick={() => onChange(k)} className={`border-none px-[9px] py-1.5 text-xs font-bold ${k === value ? 'bg-ink text-white' : 'bg-white text-ink-3'}`}>{label}</button>
-      ))}
-    </div>
-  );
-}
-
-function Stepper({ label, value, onDec, onInc }: { label: string; value: number; onDec: () => void; onInc: () => void }) {
-  const b = 'h-7 w-7 rounded-lg border-none bg-transparent text-[15px] text-ink hover:bg-line-2';
-  return (
-    <div className="flex items-center gap-1.5">
-      {label}
-      <div className="flex items-center rounded-lg border border-line bg-white">
-        <button onClick={onDec} className={b} aria-label={`Fewer ${label.toLowerCase()}`}>−</button>
-        <div className="min-w-[18px] text-center text-[13px] font-extrabold text-ink">{value}</div>
-        <button onClick={onInc} className={b} aria-label={`More ${label.toLowerCase()}`}>+</button>
-      </div>
-    </div>
-  );
-}
-
-export function Configurator({ cabs, built, d, f, selId, selSec: rawSec, onSelect, onSelectSec, onLayout }: Props) {
+export function Configurator({ cabs, built, catalog, d, f, selId, selSec: rawSec, onSelect, onSelectSec, onLayout }: Props) {
   const selIdx = Math.max(0, cabs.findIndex(c => c.id === selId));
   const sc = cabs[selIdx], sb = built[selIdx];
 
@@ -70,11 +48,11 @@ export function Configurator({ cabs, built, d, f, selId, selSec: rawSec, onSelec
 
   if (!sc) return shell(<>{header('Configure', 'No cabinets')}{empty('Add a cabinet to configure it.')}</>);
 
-  const t = TYPES[sc.type];
+  const t = typeFor(catalog, sc.type);
   if (sb.bad) return shell(<>{header(`Configure · cabinet ${selIdx + 1} of ${cabs.length}`, `#${selIdx + 1} ${sb.code}`, t?.label)}{empty('Enter width, height and depth to see the drawing.')}</>);
 
   // Editable layout: the saved custom one, or the type's standard layout with heights as text.
-  const cur: SectionInput[] = sc.layout || defaultLayout(sc.type, d, parseDim(sc.h)).map(s => ({ ...s, h: typeof s.h === 'number' ? f(s.h) : s.h }));
+  const cur: SectionInput[] = sc.layout || defaultLayout(sc.type, d, parseDim(sc.h), catalog).map(s => ({ ...s, h: typeof s.h === 'number' ? f(s.h) : s.h }));
   const setL = (fn: (L: SectionInput[]) => SectionInput[]) => onLayout(sc.id, fn(cur.map(s => ({ ...s }))));
   const selSec = Math.max(0, Math.min(rawSec || 0, cur.length - 1));
   const at = selSec + 1;
@@ -123,7 +101,7 @@ export function Configurator({ cabs, built, d, f, selId, selSec: rawSec, onSelec
   return shell(
     <>
       {header(`Configure · cabinet ${selIdx + 1} of ${cabs.length}`, `#${selIdx + 1} ${sb.code}`,
-        `${categoryLabel(t?.cat)} · ${t?.label} · ${f(sb.W)} W x ${f(sb.H)} H x ${f(sb.D)} D`)}
+        `${categoryLabel(catalog, t?.cat)} · ${t?.label ?? sc.type} · ${f(sb.W)} W x ${f(sb.H)} H x ${f(sb.D)} D`)}
       <div className="grid items-start gap-7" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))' }}>
         <div className="flex flex-col gap-2.5">
           <svg viewBox={`${-fs * 3.4} ${-fs} ${W + fs * 3.4 + fs * 8} ${H + fs * 4.4}`} className="block max-h-[560px] w-full" role="img" aria-label={`Front elevation of ${sb.code}`}>

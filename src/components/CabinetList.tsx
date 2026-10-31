@@ -1,5 +1,6 @@
 'use client';
-import { CATEGORIES, TYPES, categoryLabel, configsFor, parseDim, type BuiltCabinet, type CabInput, type Category, type Fmt } from '@/lib/engine';
+import { categoryLabel, parseDim, typeFor, typesIn, type BuiltCabinet, type CabCatalog, type CabInput, type Fmt, type Resolved } from '@/lib/engine';
+import { TypeThumb } from './Elevation';
 
 const COLS = '28px minmax(84px,0.9fr) minmax(120px,1.5fr) repeat(4,minmax(58px,1fr)) 46px 28px';
 const dimInput = 'field min-w-0 px-2 py-2 text-center text-sm tabular-nums';
@@ -7,20 +8,22 @@ const dimInput = 'field min-w-0 px-2 py-2 text-center text-sm tabular-nums';
 interface Props {
   cabs: CabInput[];
   built: BuiltCabinet[];
+  catalog: CabCatalog;
+  d: Resolved;
   f: Fmt;
   selId: number | undefined;
   pickId: number | null;
   onUpdate: (id: number, patch: Partial<CabInput>) => void;
   onTogglePick: (id: number) => void;
-  /** Category changed: first configuration applied, tile grid opened. */
-  onCategory: (id: number, cat: Category) => void;
+  /** Category changed: first box applied, tile grid opened. */
+  onCategory: (id: number, cat: string) => void;
   onPick: (id: number, type: string) => void;
   onConfigure: (id: number) => void;
   onRemove: (id: number) => void;
   onAdd: () => void;
 }
 
-export function CabinetList({ cabs, built, f, selId, pickId, onUpdate, onTogglePick, onCategory, onPick, onConfigure, onRemove, onAdd }: Props) {
+export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdate, onTogglePick, onCategory, onPick, onConfigure, onRemove, onAdd }: Props) {
   const bad = (v: string) => isNaN(parseDim(v)) || parseDim(v) <= 0;
   const blur = (id: number, k: 'w' | 'h' | 'd' | 'toe') => (e: React.FocusEvent<HTMLInputElement>) => {
     const v = parseDim(e.target.value);
@@ -38,19 +41,21 @@ export function CabinetList({ cabs, built, f, selId, pickId, onUpdate, onToggleP
       {cabs.length === 0 && <div className="rounded-lg bg-canvas px-4 py-6 text-center text-sm text-muted">No cabinets yet. Add one to start the cut list.</div>}
       {cabs.map((c, i) => {
         const b = built[i];
-        const t = TYPES[c.type];
+        const t = typeFor(catalog, c.type);
         const picking = pickId === c.id;
+        const boxes = typesIn(catalog, t?.cat);
         const fronts = b.bad ? '' : ' · ' + b.fronts.map(fr => `${fr.qty > 1 ? fr.qty + '× ' : ''}${fr.desc} ${f(fr.w)} x ${f(fr.l)}`).join(', ');
         return (
           <div key={c.id} className={`-mx-1.5 grid items-center gap-1.5 rounded-lg p-1.5 ${c.id === selId ? 'bg-sel' : 'bg-transparent'}`} style={{ gridTemplateColumns: COLS }}>
             <div className="text-[13px] font-bold text-muted">{i + 1}</div>
-            <select value={t?.cat} onChange={e => onCategory(c.id, e.target.value as Category)} className="field min-w-0 px-1.5 py-2 text-sm text-ink" aria-label="Type">
-              {CATEGORIES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            <select value={t?.cat ?? ''} onChange={e => onCategory(c.id, e.target.value)} className="field min-w-0 px-1.5 py-2 text-sm text-ink" aria-label="Type">
+              {!t && <option value="">Unknown</option>}
+              {catalog.categories.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
             </select>
             <button onClick={() => onTogglePick(c.id)} aria-expanded={picking}
               className={`flex h-9 min-w-0 items-center gap-2 rounded-md border bg-white py-0.5 pr-2 pl-[3px] text-left text-ink hover:border-ink ${picking ? 'border-accent' : 'border-line'}`}>
-              <img src={t?.img} alt="" className="h-[30px] w-7 flex-none object-contain" />
-              <div className="min-w-0 flex-1 truncate text-[13px] leading-[1.15] font-semibold">{t?.label}</div>
+              <TypeThumb type={t} d={d} catalog={catalog} className="h-[30px] w-7 flex-none object-contain" />
+              <div className="min-w-0 flex-1 truncate text-[13px] leading-[1.15] font-semibold">{t?.label ?? `${c.type} (not in catalog)`}</div>
               <div className="flex-none text-[10px] text-muted">▾</div>
             </button>
             <input value={c.w} onChange={e => onUpdate(c.id, { w: e.target.value })} onBlur={blur(c.id, 'w')} className={`${dimInput} ${bad(c.w) ? 'field-bad' : ''}`} aria-label="Width" />
@@ -61,16 +66,17 @@ export function CabinetList({ cabs, built, f, selId, pickId, onUpdate, onToggleP
             <button onClick={() => onRemove(c.id)} title="Remove" className="h-8 w-7 rounded-md border-none bg-transparent text-lg text-faint hover:bg-canvas hover:text-danger">×</button>
             {picking && (
               <div className="col-span-full flex flex-col gap-2 rounded-lg border border-line bg-canvas p-2.5">
-                <div className="eyebrow">{categoryLabel(t?.cat)} configurations</div>
+                <div className="eyebrow">{t ? `${categoryLabel(catalog, t.cat)} configurations` : 'Pick a category'}</div>
+                {t && boxes.length === 0 && <div className="text-xs text-muted">No boxes in this category yet. Add them on the Admin page.</div>}
                 <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(108px,1fr))' }}>
-                  {configsFor(t?.cat).map(o => {
-                    const cur = o.key === c.type;
+                  {boxes.map(o => {
+                    const cur = o.code === c.type;
                     return (
-                      <button key={o.key} onClick={() => onPick(c.id, o.key)}
+                      <button key={o.code} onClick={() => onPick(c.id, o.code)}
                         className={`flex flex-col items-center gap-1.5 rounded-lg px-2 pt-2.5 pb-2 text-ink hover:border-ink hover:shadow-[0_1px_2px_rgba(11,11,12,0.08),0_4px_12px_rgba(11,11,12,0.06)] ${cur ? 'border-2 border-accent bg-sel' : 'border border-line bg-white'}`}>
-                        <img src={o.img} alt="" className="block h-[84px] w-full object-contain" />
+                        <TypeThumb type={o} d={d} catalog={catalog} className="block h-[84px] w-full object-contain" />
                         <div className="text-center text-xs leading-[1.25] font-bold text-pretty">{o.label}</div>
-                        <div className="text-[11px] font-semibold text-muted">{o.key}</div>
+                        <div className="text-[11px] font-semibold text-muted">{o.code}</div>
                       </button>
                     );
                   })}

@@ -50,28 +50,60 @@ export function fmt(n: number | null | undefined, mode: DimFormat = 'fraction'):
 
 export const makeFmt = (mode: DimFormat): Fmt => n => fmt(n, mode);
 
-export type Category = 'base' | 'wall' | 'tall' | 'vanity';
-export const CATEGORIES: [Category, string][] = [['base', 'Base'], ['wall', 'Wall'], ['tall', 'Tall'], ['vanity', 'Vanity']];
+// ---- Cabinet catalog: categories and box types. The built-ins below are the app's defaults; the shop
+// edits its own copy on the Admin page and passes it to buildJob.
 
-export interface CabType { cat: Category; img: string; label: string; h: number; d: number; toe: number }
-export const TYPES: Record<string, CabType> = {
-  'B':    { cat: 'base', img: '/assets/sku/base-1td.png', label: '1 drawer, doors', h: 34.5, d: 24, toe: 4.5 },
-  'BD':   { cat: 'base', img: '/assets/sku/base-fh.png', label: 'Full-height doors', h: 34.5, d: 24, toe: 4.5 },
-  '2DB':  { cat: 'base', img: '/assets/sku/base-2d.png', label: '2 drawer', h: 34.5, d: 24, toe: 4.5 },
-  '3DB':  { cat: 'base', img: '/assets/sku/base-3d.png', label: '3 drawer', h: 34.5, d: 24, toe: 4.5 },
-  '4DB':  { cat: 'base', img: '/assets/sku/base-4d.png', label: '4 drawer', h: 34.5, d: 24, toe: 4.5 },
-  'SB':   { cat: 'base', img: '/assets/sku/base-sink.png', label: 'Sink base', h: 34.5, d: 24, toe: 4.5 },
-  'W':    { cat: 'wall', img: '/assets/sku/wall-std.png', label: 'Doors', h: 30, d: 12, toe: 0 },
-  'WO':   { cat: 'wall', img: '/assets/sku/wall-open.png', label: 'Open shelf', h: 30, d: 12, toe: 0 },
-  'T':    { cat: 'tall', img: '/assets/sku/tall-std.png', label: 'Pantry, upper + lower doors', h: 84, d: 24, toe: 4.5 },
-  'TD':   { cat: 'tall', img: '/assets/sku/tall-po.png', label: 'Pantry, full-height doors', h: 84, d: 24, toe: 4.5 },
-  'V':    { cat: 'vanity', img: '/assets/sku/van-fh.png', label: 'Doors', h: 30, d: 21, toe: 0 },
-  'VSB':  { cat: 'vanity', img: '/assets/sku/van-sink.png', label: 'Sink, false front + doors', h: 30, d: 21, toe: 0 },
-  'V3DB': { cat: 'vanity', img: '/assets/sku/van-3d.png', label: '3 drawer', h: 30, d: 21, toe: 0 },
-};
-export const categoryLabel = (cat: Category | undefined) => CATEGORIES.find(x => x[0] === cat)?.[1] ?? '';
-export const configsFor = (cat: Category | undefined) =>
-  Object.entries(TYPES).filter(([, t]) => t.cat === cat).map(([key, t]) => ({ key, ...t }));
+/** How a category's case goes together. */
+export type BuildStyle = 'base' | 'wall' | 'tall';
+export const BUILD_STYLES: [BuildStyle, string][] = [
+  ['base', 'Base: open top with stretchers, deck, toe kick'],
+  ['wall', 'Wall: full top and bottom, two nailers'],
+  ['tall', 'Tall: full top, deck, one nailer, toe kick'],
+];
+export interface CabCategory { key: string; label: string; style: BuildStyle }
+
+/** Rules a standard face height can follow instead of a fixed dimension. */
+export const FACE_H_RULES: [string, string][] = [['smallFront', 'Top drawer front height'], ['tallLowerDoor', 'Tall lower door height']];
+/**
+ * One face in a box type's standard layout. `h` is '' (auto), a rule name from FACE_H_RULES, or a
+ * dimension as typed. `shelves: 'auto'` means one shelf under 30" tall, two from 30".
+ */
+export interface FaceSpec { kind: Kind; h: string; split: number; shelves: number | 'auto'; rollouts: number; hinge: Hinge }
+/** A box type: the code jobs refer to, its category, picker image (blank = drawn from the faces), default size and standard faces. */
+export interface CabType { code: string; cat: string; label: string; img: string; h: string; d: string; toe: string; faces: FaceSpec[] }
+export interface CabCatalog { categories: CabCategory[]; types: CabType[] }
+
+export const newFace = (kind: Kind, h = '', o: Partial<FaceSpec> = {}): FaceSpec =>
+  ({ kind, h, split: kind === 'door' ? 0 : 1, shelves: 0, rollouts: 0, hinge: 'L', ...o });
+const F = newFace;
+const T = (code: string, cat: string, img: string, label: string, h: string, d: string, toe: string, faces: FaceSpec[]): CabType =>
+  ({ code, cat, label, img: `/assets/sku/${img}.png`, h, d, toe, faces });
+
+export const BUILTIN_CATEGORIES: CabCategory[] = [
+  { key: 'base', label: 'Base', style: 'base' }, { key: 'wall', label: 'Wall', style: 'wall' },
+  { key: 'tall', label: 'Tall', style: 'tall' }, { key: 'vanity', label: 'Vanity', style: 'base' },
+];
+export const BUILTIN_TYPES: CabType[] = [
+  T('B', 'base', 'base-1td', '1 drawer, doors', '34 1/2', '24', '4 1/2', [F('drawer', 'smallFront'), F('door', '', { shelves: 1 })]),
+  T('BD', 'base', 'base-fh', 'Full-height doors', '34 1/2', '24', '4 1/2', [F('door', '', { shelves: 1 })]),
+  T('2DB', 'base', 'base-2d', '2 drawer', '34 1/2', '24', '4 1/2', [F('drawer'), F('drawer')]),
+  T('3DB', 'base', 'base-3d', '3 drawer', '34 1/2', '24', '4 1/2', [F('drawer', 'smallFront'), F('drawer'), F('drawer')]),
+  T('4DB', 'base', 'base-4d', '4 drawer', '34 1/2', '24', '4 1/2', [F('drawer', 'smallFront'), F('drawer'), F('drawer'), F('drawer')]),
+  T('SB', 'base', 'base-sink', 'Sink base', '34 1/2', '24', '4 1/2', [F('false', 'smallFront'), F('door')]),
+  T('W', 'wall', 'wall-std', 'Doors', '30', '12', '0', [F('door', '', { shelves: 'auto' })]),
+  T('WO', 'wall', 'wall-open', 'Open shelf', '30', '12', '0', [F('open', '', { shelves: 'auto' })]),
+  T('T', 'tall', 'tall-std', 'Pantry, upper + lower doors', '84', '24', '4 1/2', [F('door', '', { shelves: 3 }), F('door', 'tallLowerDoor', { shelves: 1 })]),
+  T('TD', 'tall', 'tall-po', 'Pantry, full-height doors', '84', '24', '4 1/2', [F('door', '', { shelves: 4 })]),
+  T('V', 'vanity', 'van-fh', 'Doors', '30', '21', '0', [F('door')]),
+  T('VSB', 'vanity', 'van-sink', 'Sink, false front + doors', '30', '21', '0', [F('false', 'smallFront'), F('door')]),
+  T('V3DB', 'vanity', 'van-3d', '3 drawer', '30', '21', '0', [F('drawer', 'smallFront'), F('drawer'), F('drawer')]),
+];
+export const BUILTIN_CATALOG: CabCatalog = { categories: BUILTIN_CATEGORIES, types: BUILTIN_TYPES };
+
+export const typeFor = (catalog: CabCatalog, code: string | undefined) => catalog.types.find(t => t.code === code);
+export const categoryFor = (catalog: CabCatalog, key: string | undefined) => catalog.categories.find(c => c.key === key);
+export const categoryLabel = (catalog: CabCatalog, key: string | undefined) => categoryFor(catalog, key)?.label ?? '';
+export const typesIn = (catalog: CabCatalog, key: string | undefined) => catalog.types.filter(t => t.cat === key);
 
 export const DEFAULTS = {
   caseThk: 0.75, backThk: 0.25, backGroove: 0.375, backInset: 0.75, stretcherW: 4, toeRecess: 3,
@@ -150,23 +182,20 @@ export function newSection(kind: Kind, h: string | number = '', o: Partial<Secti
   return { kind, h, split: kind === 'door' ? 0 : 1, shelves: 0, rollouts: 0, hinge: 'L', ...o };
 }
 
-export function defaultLayout(type: string, d: Resolved, H: number): SectionInput[] {
-  const S = newSection;
-  switch (type) {
-    case '3DB': return [S('drawer', d.smallFront), S('drawer'), S('drawer')];
-    case '4DB': return [S('drawer', d.smallFront), S('drawer'), S('drawer'), S('drawer')];
-    case 'B': return [S('drawer', d.smallFront), S('door', '', { shelves: 1 })];
-    case 'BD': return [S('door', '', { shelves: 1 })];
-    case '2DB': return [S('drawer'), S('drawer')];
-    case 'WO': return [S('open', '', { shelves: H >= 30 ? 2 : 1 })];
-    case 'TD': return [S('door', '', { shelves: 4 })];
-    case 'VSB': return [S('false', d.smallFront), S('door')];
-    case 'V3DB': return [S('drawer', d.smallFront), S('drawer'), S('drawer')];
-    case 'SB': return [S('false', d.smallFront), S('door')];
-    case 'W': return [S('door', '', { shelves: H >= 30 ? 2 : 1 })];
-    case 'T': return [S('door', '', { shelves: 3 }), S('door', d.tallLowerDoor, { shelves: 1 })];
-    default: return [S('door')];
-  }
+/** Turn a box type's standard faces into section inputs for a cabinet `H` tall, resolving rule heights and auto shelves. */
+export function resolveFaces(faces: FaceSpec[], d: Resolved, H: number): SectionInput[] {
+  return faces.map(fc => {
+    const rule = FACE_H_RULES.find(([k]) => k === fc.h);
+    const n = parseDim(fc.h);
+    const h: string | number = rule ? (d[fc.h as 'smallFront' | 'tallLowerDoor'] as number) : !isNaN(n) && n > 0 ? n : '';
+    return { kind: fc.kind, h, split: fc.split, shelves: fc.shelves === 'auto' ? (H >= 30 ? 2 : 1) : fc.shelves, rollouts: fc.rollouts, hinge: fc.hinge };
+  });
+}
+
+/** The standard layout of a box type; an unknown type gets the catalog's first box. */
+export function defaultLayout(type: string, d: Resolved, H: number, catalog: CabCatalog = BUILTIN_CATALOG): SectionInput[] {
+  const t = typeFor(catalog, type) ?? catalog.types[0];
+  return t ? resolveFaces(t.faces, d, H) : [newSection('door')];
 }
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 
@@ -181,29 +210,32 @@ export interface Section {
   spacerL: boolean; spacerR: boolean;
 }
 export interface BuiltCabinet {
-  idx: number; type: string; code: string; label: string; W: number; H: number; D: number; toe: number;
+  idx: number; type: string; cat: string; code: string; label: string; W: number; H: number; D: number; toe: number;
   parts: Part[]; fronts: Part[]; drawers: DrawerBox[]; hardware: HardwareItem[]; sections: Section[];
   warn: string; custom: boolean; bad: boolean; qty: number;
   boxH: number; isWall: boolean; isTall: boolean; autoH: number; avail: number;
 }
 
-export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n => fmt(n)): BuiltCabinet {
+export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n => fmt(n), catalog: CabCatalog = BUILTIN_CATALOG): BuiltCabinet {
   const W = parseDim(c.w), H = parseDim(c.h), D = parseDim(c.d);
   const toe = isNaN(parseDim(c.toe)) ? 0 : parseDim(c.toe);
-  const t = TYPES[c.type] || TYPES.B;
+  const known = typeFor(catalog, c.type);
+  const t = known ?? catalog.types[0] ?? BUILTIN_TYPES[0];
+  const style = categoryFor(catalog, t.cat)?.style ?? 'base';
   const bad = [W, H, D].some(isNaN) || W <= 0 || H <= 0 || D <= 0 || toe >= H;
   const out: BuiltCabinet = {
-    idx, type: c.type, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
+    idx, type: c.type, cat: t.cat, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
     parts: [], fronts: [], drawers: [], hardware: [], sections: [], warn: '', custom: !!c.layout, bad,
     qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0,
   };
   if (bad) return out;
   const thk = d.caseThk, boxH = H - toe, inW = W - 2 * thk;
-  const isWall = t.cat === 'wall', isTall = t.cat === 'tall';
+  const isWall = style === 'wall', isTall = style === 'tall';
   out.boxH = boxH; out.isWall = isWall; out.isTall = isTall;
+  if (!known) out.warn = `Unknown cabinet type ${c.type}: built as ${t.code}. Pick a box from the list.`;
   const P = (qty: number, desc: string, w: number, l: number, grain: Grain, mat: string) => out.parts.push({ qty, desc, w, l, grain, mat });
   const F = (qty: number, desc: string, w: number, l: number) => out.fronts.push({ qty, desc, w, l, grain: 'Vertical', mat: d.frontMat });
-  const layout = c.layout && c.layout.length ? c.layout : defaultLayout(c.type, d, H);
+  const layout = c.layout && c.layout.length ? c.layout : defaultLayout(c.type, d, H, catalog);
   // Case
   P(1, 'Unfinished Left End', D, boxH, 'Vertical', d.caseMat);
   P(1, 'Unfinished Right End', D, boxH, 'Vertical', d.caseMat);
@@ -225,8 +257,8 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const fixed = hs.reduce<number>((a, v) => a + (v || 0), 0), nAuto = hs.filter(v => v == null).length;
   const avail = openH - (layout.length - 1) * gap;
   const autoH = nAuto ? (avail - fixed) / nAuto : 0;
-  if (nAuto && autoH < 3) out.warn = `Fixed faces leave only ${f(Math.max(0, autoH))}" for each auto section.`;
-  if (!nAuto && Math.abs(avail - fixed) > 0.01) out.warn = `Faces total ${f(fixed)}" but the opening is ${f(avail)}". Clear one height to make it auto.`;
+  if (nAuto && autoH < 3 && !out.warn) out.warn = `Fixed faces leave only ${f(Math.max(0, autoH))}" for each auto section.`;
+  if (!nAuto && Math.abs(avail - fixed) > 0.01 && !out.warn) out.warn = `Faces total ${f(fixed)}" but the opening is ${f(avail)}". Clear one height to make it auto.`;
   out.autoH = autoH; out.avail = avail;
   const glide = glideLen(D, d);
   const shelfD = inD - d.shelfSetback, shelfW = inW - d.shelfClear;
@@ -319,10 +351,10 @@ export interface JobResult {
 
 const cabRef = (idx: number, q: number) => (q > 1 ? `${idx} (${q})` : `${idx}`);
 
-export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null): JobResult {
+export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null, catalog: CabCatalog = BUILTIN_CATALOG): JobResult {
   const f = makeFmt(mode);
   const d = resolveDefaults(rawDefaults, jobMaterials);
-  const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f));
+  const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f, catalog));
   const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number> }> = {};
   const key = (p: Part) => `${p.desc}|${p.w}|${p.l}|${p.grain}`;
   for (const cb of built) {

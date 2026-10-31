@@ -5,21 +5,22 @@ import { defaultShopConfig, type ShopConfig } from '@/lib/shop';
 import { SaveIndicator, useAutosave } from '../useAutosave';
 import { MethodsEditor } from './MethodsEditor';
 import { OptionsEditor } from './OptionsEditor';
+import { BoxesEditor } from './BoxesEditor';
 
-type Tab = 'materials' | 'methods';
-const TABS: [Tab, string][] = [['materials', 'Materials & hardware'], ['methods', 'Construction methods']];
+type Tab = 'materials' | 'methods' | 'boxes';
+const TABS: [Tab, string][] = [['materials', 'Materials & hardware'], ['methods', 'Construction methods'], ['boxes', 'Cabinet boxes']];
 
 export type Update = (fn: (c: ShopConfig) => ShopConfig) => void;
 
 /** Admin page: shop-wide choices and construction methods, autosaved to /api/shop. */
-export function AdminApp({ initial }: { initial: ShopConfig }) {
+export function AdminApp({ initial, skuImages }: { initial: ShopConfig; skuImages: string[] }) {
   const [cfg, setCfg] = useState(initial);
   const [tab, setTab] = useState<Tab>('materials');
   const save = useAutosave('/api/shop', cfg);
   const update: Update = fn => setCfg(fn);
 
   const restore = () => {
-    if (!window.confirm('Restore the built-in materials, choices, saw settings and method? Everything on this page is replaced. Jobs keep their own materials and rules; the saw settings apply to all of them.')) return;
+    if (!window.confirm('Restore the built-in materials, choices, saw settings, method and cabinet boxes? Everything on this page is replaced. Jobs keep their own materials and rules; the saw settings apply to all of them.')) return;
     setCfg(defaultShopConfig());
   };
 
@@ -36,7 +37,7 @@ export function AdminApp({ initial }: { initial: ShopConfig }) {
 
         <div className="flex flex-col gap-1">
           <div className="eyebrow">Shop settings</div>
-          <div className="text-2xl font-extrabold tracking-[-0.01em]">Materials, hardware and construction methods</div>
+          <div className="text-2xl font-extrabold tracking-[-0.01em]">Materials, methods and cabinet boxes</div>
           <div className="text-sm text-ink-3">
             What the job setup page offers. Materials, hardware and methods are copied into a job when it is set up; the panel saw settings apply to every job right away.
           </div>
@@ -51,7 +52,9 @@ export function AdminApp({ initial }: { initial: ShopConfig }) {
           ))}
         </div>
 
-        {tab === 'materials' ? <OptionsEditor cfg={cfg} update={update} /> : <MethodsEditor cfg={cfg} update={update} />}
+        {tab === 'materials' && <OptionsEditor cfg={cfg} update={update} />}
+        {tab === 'methods' && <MethodsEditor cfg={cfg} update={update} />}
+        {tab === 'boxes' && <BoxesEditor cfg={cfg} update={update} skuImages={skuImages} />}
 
         <div className="flex items-center gap-3 border-t border-line-2 pt-4 pb-6 text-xs text-muted">
           <div>Choices and methods are shared by everyone using this database.</div>

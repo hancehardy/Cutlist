@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Material } from './engine';
+import { BUILTIN_CATALOG, newFace, type Material } from './engine';
 import { emptyJob, normalizeJobDoc } from './job';
 import { OPTIONS, PRESETS, isCustomized, presetFor, type Preset } from './presets';
-import { BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
+import { BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
 
 const M = (name: string, thk: string, w = '49', l = '97'): Material => ({ name, thk, w, l });
 const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
@@ -121,5 +121,49 @@ describe('jobs on shop settings', () => {
     expect(doc.defaults).toEqual({ pull: 'Knob', stretcherW: '3' });
     // A job with no old material keys gets the app's melamine defaults.
     expect(normalizeJobDoc({ cabs: [] }).materials.back).toEqual(M('1/4 1s Melamine', '1/4'));
+  });
+});
+
+describe('cabinet catalog config', () => {
+  it('starts from the built-in categories and boxes, as copies', () => {
+    const c = defaultShopConfig().catalog;
+    expect(c).toEqual(BUILTIN_CATALOG);
+    c.types[0].faces[0].kind = 'open'; c.categories[0].label = 'x';
+    expect(BUILTIN_CATALOG.types[0].faces[0].kind).toBe('drawer');
+    expect(BUILTIN_CATALOG.categories[0].label).toBe('Base');
+    expect(normalizeShopConfig({}).catalog).toEqual(BUILTIN_CATALOG);
+  });
+
+  it('cleans up categories: label required, unique slug keys, known styles', () => {
+    const c = normalizeCatalog({ categories: [{ key: 'Up per!', label: ' Uppers ', style: 'wall' }, { key: 'up-per', label: 'Again', style: 'weird' }, { label: '' }, 'x'], types: [] });
+    expect(c.categories).toEqual([{ key: 'up-per', label: 'Uppers', style: 'wall' }, { key: 'up-per-2', label: 'Again', style: 'base' }]);
+    // No boxes given: the built-in boxes move into the first category when theirs is gone.
+    expect(new Set(c.types.map(t => t.cat))).toEqual(new Set(['up-per']));
+  });
+
+  it('cleans up boxes: unique codes, category fallback, faces validated', () => {
+    const c = normalizeCatalog({ types: [
+      { code: ' U ', cat: 'wall', label: '', img: '/assets/sku/wall-std.png', h: 'x', d: 0, toe: -1, faces: [
+        { kind: 'door', h: 'smallFront', split: 9, shelves: 'auto', rollouts: 7, hinge: 'R' },
+        { kind: 'drawer', h: '7 1/2', split: 0, shelves: 3, rollouts: 2 },
+        { kind: 'door', h: 'nonsense' },
+        { kind: 'shelf' },
+      ] },
+      { code: 'U', cat: 'nowhere', label: 'dup' },
+      { code: 'E', cat: 'nowhere', faces: [] },
+    ] });
+    expect(c.categories).toEqual(BUILTIN_CATALOG.categories);
+    expect(c.types.map(t => t.code)).toEqual(['U', 'E']);
+    expect(c.types[0]).toMatchObject({ cat: 'wall', label: 'U', h: '30', d: '24', toe: '0' });
+    expect(c.types[0].faces).toEqual([
+      { kind: 'door', h: 'smallFront', split: 4, shelves: 'auto', rollouts: 5, hinge: 'R' },
+      { kind: 'drawer', h: '7 1/2', split: 1, shelves: 0, rollouts: 0, hinge: 'L' },
+      { kind: 'door', h: '', split: 0, shelves: 0, rollouts: 0, hinge: 'L' },
+    ]);
+    expect(c.types[1]).toMatchObject({ cat: 'base', label: 'E', faces: [newFace('door')] });
+  });
+
+  it('keeps a job\'s box codes as saved', () => {
+    expect(normalizeJobDoc({ cabs: [{ type: 'ZZ' }, {}] }).cabs.map(c => c.type)).toEqual(['ZZ', 'B']);
   });
 });

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { RULE_FIELDS, TYPES, buildJob, configsFor, makeFmt, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
+import { RULE_FIELDS, buildJob, makeFmt, parseDim, typeFor, typesIn, type CabInput, type DefaultKey, type SectionInput } from '@/lib/engine';
 import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
 import type { ShopConfig } from '@/lib/shop';
 import { CabinetList } from './CabinetList';
@@ -43,8 +43,8 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
   const f = useMemo(() => makeFmt(doc.dimFormat), [doc.dimFormat]);
   // Saw settings are shop-wide and live, so they overlay the job's rules at build time.
   const result = useMemo(
-    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials),
-    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, shop.saw],
+    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials, shop.catalog),
+    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, shop.saw, shop.catalog],
   );
   const { cabs, job } = doc;
 
@@ -57,7 +57,10 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
 
   const setCabs = (fn: (c: CabInput[]) => CabInput[]) => setDoc(s => ({ ...s, cabs: fn(s.cabs) }));
   const upd = (id: number, patch: Partial<CabInput>) => setCabs(cs => cs.map(c => (c.id === id ? { ...c, ...patch } : c)));
-  const setType = (id: number, type: string) => { const t = TYPES[type]; upd(id, { type, h: f(t.h), d: f(t.d), toe: f(t.toe), layout: null }); };
+  const setType = (id: number, type: string) => {
+    const t = typeFor(shop.catalog, type);
+    if (t) upd(id, { type, h: f(parseDim(t.h)), d: f(parseDim(t.d)), toe: f(parseDim(t.toe)), layout: null });
+  };
   const select = (id: number, sec = 0) => { setSelId(id); setSelSec(sec); };
   const selCabId = (cabs.find(c => c.id === selId) || cabs[0])?.id;
 
@@ -103,16 +106,17 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
 
         <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} presets={shop.presets} d={result.d} onEdit={() => { setView('setup'); window.scrollTo(0, 0); }} />
 
-        <CabinetList cabs={cabs} built={result.cabs} f={f} selId={selCabId} pickId={pickId}
+        <CabinetList cabs={cabs} built={result.cabs} catalog={shop.catalog} d={result.d} f={f} selId={selCabId} pickId={pickId}
           onUpdate={upd}
           onTogglePick={id => setPickId(p => (p === id ? null : id))}
-          onCategory={(id, cat) => { setType(id, configsFor(cat)[0].key); setPickId(id); }}
+          onCategory={(id, cat) => { const first = typesIn(shop.catalog, cat)[0]; if (first) setType(id, first.code); setPickId(id); }}
           onPick={(id, type) => { setType(id, type); setPickId(null); select(id); setTab('config'); }}
           onConfigure={id => { select(id); setTab('config'); }}
           onRemove={id => setCabs(cs => cs.filter(x => x.id !== id))}
           onAdd={() => {
-            const t = TYPES.B, id = Math.max(0, ...cabs.map(c => c.id)) + 1;
-            setCabs(cs => [...cs, { id, type: 'B', w: '30', h: f(t.h), d: f(t.d), toe: f(t.toe), qty: '1', layout: null }]);
+            const t = shop.catalog.types[0], id = Math.max(0, ...cabs.map(c => c.id)) + 1;
+            if (!t) return;
+            setCabs(cs => [...cs, { id, type: t.code, w: '30', h: f(parseDim(t.h)), d: f(parseDim(t.d)), toe: f(parseDim(t.toe)), qty: '1', layout: null }]);
             select(id); setTab('config');
           }} />
       </div>
@@ -134,7 +138,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, shop }: Props) {
         </div>
 
         {show('config') && (
-          <Configurator cabs={cabs} built={result.cabs} d={result.d} f={f} selId={selCabId ?? null} selSec={selSec}
+          <Configurator cabs={cabs} built={result.cabs} catalog={shop.catalog} d={result.d} f={f} selId={selCabId ?? null} selSec={selSec}
             onSelect={select} onSelectSec={setSelSec}
             onLayout={(id, layout: SectionInput[] | null) => upd(id, { layout })} />
         )}

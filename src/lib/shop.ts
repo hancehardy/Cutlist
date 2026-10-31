@@ -1,6 +1,9 @@
 // Shop-wide configuration edited on the Admin page: the materials table, the dropdown choices for
 // hardware, the panel saw settings and the construction methods. Stored as one JSON document in SQLite.
-import { DEFAULTS, HARDWARE_FIELDS, RULE_KEYS, SAW_FIELDS, fmt, parseDim, type DefaultKey, type JobMaterials, type Material, type RawDefaults } from './engine';
+import {
+  BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, FACE_H_RULES, HARDWARE_FIELDS, RULE_KEYS, SAW_FIELDS, fmt, newFace, parseDim,
+  type BuildStyle, type CabCatalog, type CabCategory, type CabType, type DefaultKey, type FaceSpec, type Hinge, type JobMaterials, type Kind, type Material, type RawDefaults,
+} from './engine';
 import { OPTIONS, PRESETS, type Preset } from './presets';
 
 /** Hardware fields that offer a dropdown of shop choices (the rest are free text). */
@@ -20,7 +23,14 @@ export interface ShopConfig {
   saw: SawSettings;
   /** Construction methods. The first one is the default for new jobs. */
   presets: Preset[];
+  /** Cabinet categories and box types offered on the cabinet list. */
+  catalog: CabCatalog;
 }
+
+export const cloneCatalog = (c: CabCatalog): CabCatalog => ({
+  categories: c.categories.map(x => ({ ...x })),
+  types: c.types.map(t => ({ ...t, faces: t.faces.map(f => ({ ...f })) })),
+});
 
 const SHEET_W = fmt(DEFAULTS.sheetW), SHEET_L = fmt(DEFAULTS.sheetL);
 const mat = (name: string, thk: string, w = SHEET_W, l = SHEET_L): Material => ({ name, thk, w, l });
@@ -38,6 +48,7 @@ export function defaultShopConfig(): ShopConfig {
     options: Object.fromEntries(OPTION_KEYS.map(k => [k, [...OPTIONS[k]!]])),
     saw: { kerf: fmt(DEFAULTS.kerf), edgeTrim: fmt(DEFAULTS.edgeTrim) },
     presets: PRESETS.map(p => ({ ...p, values: { ...p.values } })),
+    catalog: cloneCatalog(BUILTIN_CATALOG),
   };
 }
 
@@ -116,6 +127,68 @@ function normList(raw: unknown): string[] {
   return out;
 }
 
+const KINDS: Kind[] = ['drawer', 'door', 'false', 'open'];
+const STYLES = new Set<string>(BUILD_STYLES.map(([k]) => k));
+const int = (v: unknown, fallback: number, min: number, max: number) => {
+  const n = Math.round(Number(v));
+  return isNaN(n) ? fallback : Math.max(min, Math.min(max, n));
+};
+
+/** Validate one standard face. */
+export function normFace(raw: unknown): FaceSpec | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (!KINDS.includes(o.kind as Kind)) return null;
+  const kind = o.kind as Kind;
+  const hRaw = str(o.h).trim();
+  const h = FACE_H_RULES.some(([k]) => k === hRaw) ? hRaw : parseDim(hRaw) > 0 ? hRaw : '';
+  const store = kind === 'door' || kind === 'open';
+  return {
+    kind, h,
+    split: kind === 'door' ? int(o.split, 0, 0, 4) : kind === 'drawer' ? int(o.split, 1, 1, 4) : 1,
+    shelves: !store ? 0 : o.shelves === 'auto' ? 'auto' : int(o.shelves, 0, 0, 8),
+    rollouts: store ? int(o.rollouts, 0, 0, 5) : 0,
+    hinge: (o.hinge === 'R' ? 'R' : 'L') as Hinge,
+  };
+}
+
+/** Validate the cabinet catalog: unique category keys and box codes, faces cleaned up, built-ins when nothing survives. */
+export function normalizeCatalog(raw: unknown): CabCatalog {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const categories: CabCategory[] = [];
+  if (Array.isArray(r.categories)) {
+    for (const c of r.categories) {
+      if (!c || typeof c !== 'object') continue;
+      const o = c as Record<string, unknown>;
+      const label = str(o.label).trim();
+      if (!label) continue;
+      const key = presetKey(slug(str(o.key)) || label, categories.map(x => x.key));
+      categories.push({ key, label, style: (STYLES.has(str(o.style)) ? str(o.style) : 'base') as BuildStyle });
+    }
+  }
+  const cats = categories.length ? categories : BUILTIN_CATALOG.categories.map(c => ({ ...c }));
+  const types: CabType[] = [];
+  if (Array.isArray(r.types)) {
+    for (const t of r.types) {
+      if (!t || typeof t !== 'object') continue;
+      const o = t as Record<string, unknown>;
+      const code = str(o.code).trim();
+      if (!code || types.some(x => x.code === code)) continue;
+      const faces = Array.isArray(o.faces) ? o.faces.map(normFace).filter((f): f is FaceSpec => !!f) : [];
+      types.push({
+        code,
+        cat: cats.some(c => c.key === o.cat) ? (o.cat as string) : cats[0].key,
+        label: str(o.label).trim() || code,
+        img: str(o.img).trim(),
+        h: dim(o.h, '30'), d: dim(o.d, '24'),
+        toe: (() => { const s = str(o.toe).trim(), n = parseDim(s); return isNaN(n) || n < 0 ? '0' : s; })(),
+        faces: faces.length ? faces : [newFace('door')],
+      });
+    }
+  }
+  return { categories: cats, types: types.length ? types : BUILTIN_CATALOG.types.map(t => ({ ...t, cat: cats.some(c => c.key === t.cat) ? t.cat : cats[0].key, faces: t.faces.map(f => ({ ...f })) })) };
+}
+
 /** Validate untrusted JSON (request body or stored row) into a ShopConfig. Throws on unusable input. */
 export function normalizeShopConfig(raw: unknown): ShopConfig {
   if (!raw || typeof raw !== 'object') throw new Error('Shop settings are not a JSON object.');
@@ -152,5 +225,9 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
       presets.push({ key: presetKey(wanted || label, presets.map(x => x.key)), label, blurb: str(o.blurb).trim(), values: normValues(o.values) });
     }
   }
-  return { version: 2, materials: materials.length ? materials : builtin.materials, options, saw, presets: presets.length ? presets : builtin.presets };
+  return {
+    version: 2, materials: materials.length ? materials : builtin.materials, options, saw,
+    presets: presets.length ? presets : builtin.presets,
+    catalog: normalizeCatalog(r.catalog),
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJob, fmt, newSection, parseDim } from './engine';
+import { BUILTIN_CATALOG, buildJob, defaultLayout, fmt, newFace, newSection, parseDim, resolveDefaults, type CabCatalog } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
 import { PRESETS, isCustomized, type Preset } from './presets';
 import { defaultShopConfig } from './shop';
@@ -118,9 +118,10 @@ describe('normalizeJobDoc', () => {
   });
   it('rejects non-jobs and repairs duplicate ids', () => {
     expect(() => normalizeJobDoc({})).toThrow();
-    const doc = normalizeJobDoc({ cabs: [{ id: 1, type: 'XX' }, { id: 1, type: 'W' }] });
-    expect(doc.cabs.map(c => c.id)).toEqual([1, 2]);
-    expect(doc.cabs[0].type).toBe('B');
+    const doc = normalizeJobDoc({ cabs: [{ id: 1, type: 'XX' }, { id: 1, type: 'W' }, { id: 3 }] });
+    expect(doc.cabs.map(c => c.id)).toEqual([1, 4, 3]);
+    // Unknown codes are kept (the box may come back in the catalog); a missing one gets the first box.
+    expect(doc.cabs.map(c => c.type)).toEqual(['XX', 'W', 'B']);
   });
 });
 
@@ -278,5 +279,48 @@ describe('panel saw optimizer', () => {
   it('flags parts larger than the trimmed sheet', () => {
     const p = plan([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }]);
     expect(p.flatMap(x => x.oversize.map(o => o.name))).toContain('Unfinished Left End');
+  });
+});
+
+describe('cabinet catalog', () => {
+  const d = resolveDefaults();
+  const cab = (type: string, h = '30', catalog?: CabCatalog) =>
+    buildJob([{ id: 1, type, w: '30', h, d: '12', toe: '0', qty: '1' }], {}, 'fraction', null, catalog).cabs[0];
+
+  it('keeps the standard layouts of the built-in boxes', () => {
+    expect(defaultLayout('B', d, 34.5).map(s => [s.kind, s.h, s.shelves])).toEqual([['drawer', d.smallFront, 0], ['door', '', 1]]);
+    expect(defaultLayout('T', d, 84).map(s => [s.kind, s.h, s.shelves])).toEqual([['door', '', 3], ['door', d.tallLowerDoor, 1]]);
+    expect(defaultLayout('SB', d, 34.5).map(s => s.kind)).toEqual(['false', 'door']);
+    // Wall boxes get one shelf under 30" and two from 30".
+    expect(defaultLayout('W', d, 24)[0].shelves).toBe(1);
+    expect(defaultLayout('W', d, 30)[0].shelves).toBe(2);
+    expect(defaultLayout('WO', d, 42)[0].shelves).toBe(2);
+  });
+
+  it('builds the case from the category style, not the category name', () => {
+    const catalog: CabCatalog = {
+      categories: [{ key: 'upper', label: 'Uppers', style: 'wall' }, { key: 'larder', label: 'Larders', style: 'tall' }, { key: 'low', label: 'Lows', style: 'base' }],
+      types: [
+        { code: 'U', cat: 'upper', label: 'Upper', img: '', h: '30', d: '12', toe: '0', faces: [newFace('door', '', { shelves: 2 })] },
+        { code: 'L', cat: 'larder', label: 'Larder', img: '', h: '84', d: '24', toe: '4 1/2', faces: [newFace('door')] },
+        { code: 'LD', cat: 'low', label: 'Low drawers', img: '', h: '34 1/2', d: '24', toe: '4 1/2', faces: [newFace('drawer', '8'), newFace('drawer')] },
+      ],
+    };
+    const names = (c: ReturnType<typeof cab>) => c.parts.map(p => `${p.qty} ${p.desc}`);
+    expect(names(cab('U', '30', catalog))).toEqual(expect.arrayContaining(['1 Bottom', '1 Top', '2 Nailer']));
+    expect(names(cab('U', '30', catalog))).not.toContain('2 Top Stretcher');
+    expect(names(cab('L', '84', catalog))).toEqual(expect.arrayContaining(['1 Deck', '1 Top', '1 Nailer']));
+    const low = cab('LD', '34 1/2', catalog);
+    expect(names(low)).toEqual(expect.arrayContaining(['1 Deck', '2 Top Stretcher', '1 Nailer']));
+    // A fixed face height is a plain dimension.
+    expect(low.sections[0].h).toBe(8);
+    expect(low.cat).toBe('low');
+  });
+
+  it('warns about a box that is not in the catalog and builds it as the first box', () => {
+    const c = cab('ZZ');
+    expect(c.warn).toContain('Unknown cabinet type ZZ');
+    expect(c.label).toContain(BUILTIN_CATALOG.types[0].label);
+    expect(cab('W').warn).toBe('');
   });
 });

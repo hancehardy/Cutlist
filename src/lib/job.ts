@@ -1,5 +1,5 @@
 import type { CabInput, DimFormat, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
-import { DEFAULTS, HARDWARE_FIELDS, TYPES, fmt } from './engine';
+import { DEFAULTS, HARDWARE_FIELDS, fmt } from './engine';
 import { PRESETS } from './presets';
 import { type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial } from './shop';
 
@@ -127,7 +127,8 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     const layout = Array.isArray(o.layout) ? o.layout.map(normSection).filter((s): s is SectionInput => !!s) : null;
     return {
       id: Number(o.id) || i + 1,
-      type: typeof o.type === 'string' && TYPES[o.type] ? o.type : 'B',
+      // Codes are kept as saved: a box that was removed from the shop's catalog still shows its code and warns when built.
+      type: str(o.type).trim() || shop.catalog.types[0]?.code || 'B',
       w: str(o.w), h: str(o.h), d: str(o.d), toe: str(o.toe, '0'), qty: str(o.qty, '1'),
       layout: layout && layout.length ? layout : null,
     };

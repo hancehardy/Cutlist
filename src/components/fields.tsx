@@ -76,3 +76,27 @@ export function MaterialField({ label, value, materials, onChange }: { label: st
     </div>
   );
 }
+
+export function Segmented<T extends string>({ opts, value, onChange }: { opts: [T, string][]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div className="flex overflow-hidden rounded-lg border border-rule">
+      {opts.map(([k, label]) => (
+        <button key={k} onClick={() => onChange(k)} className={`border-none px-[9px] py-1.5 text-xs font-bold ${k === value ? 'bg-ink text-white' : 'bg-white text-ink-3'}`}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+export function Stepper({ label, value, onDec, onInc }: { label: string; value: number | string; onDec: () => void; onInc: () => void }) {
+  const b = 'h-7 w-7 rounded-lg border-none bg-transparent text-[15px] text-ink hover:bg-line-2';
+  return (
+    <div className="flex items-center gap-1.5">
+      {label}
+      <div className="flex items-center rounded-lg border border-line bg-white">
+        <button onClick={onDec} className={b} aria-label={`Fewer ${label.toLowerCase()}`}>−</button>
+        <div className="min-w-[18px] px-1 text-center text-[13px] font-extrabold text-ink">{value}</div>
+        <button onClick={onInc} className={b} aria-label={`More ${label.toLowerCase()}`}>+</button>
+      </div>
+    </div>
+  );
+}
