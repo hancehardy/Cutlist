@@ -12,10 +12,13 @@ import { presetFor } from '@/lib/presets';
 import { JobsMenu } from './JobsMenu';
 import { useAutosave } from './useAutosave';
 import { UserMenu, type Me } from './auth/UserMenu';
+import { PrintMenu } from './PrintMenu';
 import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, SheetSummaryReport, type ReportCtx } from './Reports';
 
 type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'sheets' | 'hardware';
 const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['sheets', 'Sheets'], ['hardware', 'Hardware']];
+/** Shop-floor reports only an admin sees. */
+const ADMIN_ONLY = new Set<Tab>(['cut', 'optimize']);
 
 interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; initialShop: ShopConfig; user: Me }
 
@@ -31,6 +34,10 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
   // New jobs start on the setup page; saved jobs go straight to item entry.
   const [view, setView] = useState<'setup' | 'items'>(initialDoc.setupDone ? 'items' : 'setup');
   const [printing, setPrinting] = useState(false);
+  // Which reports the current print run includes.
+  const [printSel, setPrintSel] = useState<Tab[]>([]);
+  const tabs = useMemo(() => TABS.filter(([k]) => user.role === 'admin' || !ADMIN_ONLY.has(k)), [user.role]);
+  const reports = useMemo(() => tabs.filter(([k]) => k !== 'config'), [tabs]);
   const [today, setToday] = useState('');
   const save = useAutosave(`/api/jobs/${jobId}`, doc);
 
@@ -81,7 +88,8 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
 
   const headerTxt = `Created for ${job.client} | ${job.name} | ${job.catalog} · ${today}`;
   const ctx: ReportCtx = { r: result, f, job, today, headerTxt, footerTxt: `Shop packet for mill — not a Cabinet Vision file. Confirm banding. ${job.name}` };
-  const show = (t: Tab) => (t === 'config' ? !printing && tab === 'config' : printing || tab === t);
+  const show = (t: Tab) => (t === 'config' ? !printing && tab === 'config' : printing ? printSel.includes(t) : tab === t);
+  const print = (keys: Tab[]) => { setPrintSel(keys); setPrinting(true); setTimeout(() => window.print(), 150); };
   const s = result.summary;
 
   const topBar = (
@@ -138,7 +146,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
       {/* ============ REPORTS ============ */}
       <div data-reports="1" className="flex min-w-0 flex-[2_1_520px] flex-col gap-3.5">
         <div data-print-hide="1" className="flex flex-wrap items-center gap-1">
-          {TABS.map(([k, label]) => (
+          {tabs.map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`border-0 border-b-2 bg-transparent px-3 py-2 text-sm font-bold hover:text-ink ${tab === k ? 'border-accent text-ink' : 'border-transparent text-muted'}`}>
               {label}
@@ -146,8 +154,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }
           ))}
           <div className="ml-auto flex items-center gap-3">
             <div className="text-[13px] text-muted">{s.nParts} parts · {s.nFronts} fronts · {s.nDrawers} drawers · {s.sheets} sheets</div>
-            <button onClick={() => { setPrinting(true); setTimeout(() => window.print(), 150); }}
-              className="rounded-full border-none bg-accent px-4 py-[9px] text-sm font-bold text-white hover:bg-accent-dk">Print packet</button>
+            <PrintMenu reports={reports} current={tab !== 'config' ? tab : null} onPrint={print} />
           </div>
         </div>
 
