@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RULE_FIELDS, buildJob, makeFmt, parseDim, typeFor, typesIn, type CabInput, type CabType, type DefaultKey, type SectionInput } from '@/lib/engine';
 import { type JobDoc, type JobInfo, type JobSummary } from '@/lib/job';
@@ -12,14 +11,15 @@ import { JobSummaryCard } from './JobSummaryCard';
 import { presetFor } from '@/lib/presets';
 import { JobsMenu } from './JobsMenu';
 import { useAutosave } from './useAutosave';
+import { UserMenu, type Me } from './auth/UserMenu';
 import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, SheetSummaryReport, type ReportCtx } from './Reports';
 
 type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'sheets' | 'hardware';
 const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['sheets', 'Sheets'], ['hardware', 'Hardware']];
 
-interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; initialShop: ShopConfig }
+interface Props { jobId: string; initialDoc: JobDoc; initialJobs: JobSummary[]; initialShop: ShopConfig; user: Me }
 
-export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop }: Props) {
+export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop, user }: Props) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
   // The shop config as loaded, plus any boxes saved from this job's configurator.
@@ -90,7 +90,7 @@ export function CutlistApp({ jobId, initialDoc, initialJobs, initialShop }: Prop
       <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
       <JobsMenu jobId={jobId} doc={doc} initialJobs={initialJobs} saveState={save.state} onOpen={openJob}
         onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} />
-      <Link href="/admin" className="ml-auto text-xs font-bold">Admin</Link>
+      <UserMenu user={user} />
       <div className="text-xs tracking-[0.04em] text-muted">{today}</div>
     </div>
   );

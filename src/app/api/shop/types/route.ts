@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
+import { currentUser, unauthorized } from '@/lib/auth';
 import { getShopConfig, saveShopConfig } from '@/lib/db';
 import { normType } from '@/lib/shop';
 
 export const dynamic = 'force-dynamic';
 
-/** Body: a box type (see `CabType`). Adds it to the shop's catalog; the code must be new. */
+/** Any signed-in user. Body: a box type (see `CabType`). Adds it to the shop's catalog; the code must be new. */
 export async function POST(req: Request) {
+  if (!(await currentUser())) return unauthorized();
   const body = await req.json().catch(() => null);
   const cfg = getShopConfig();
   const type = normType(body, cfg.catalog.categories);

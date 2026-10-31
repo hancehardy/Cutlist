@@ -6,14 +6,17 @@ import { SaveIndicator, useAutosave } from '../useAutosave';
 import { MethodsEditor } from './MethodsEditor';
 import { OptionsEditor } from './OptionsEditor';
 import { BoxesEditor } from './BoxesEditor';
+import { UsersEditor } from './UsersEditor';
+import { UserMenu } from '../auth/UserMenu';
+import type { User } from '@/lib/db';
 
-type Tab = 'materials' | 'methods' | 'boxes';
-const TABS: [Tab, string][] = [['materials', 'Materials & hardware'], ['methods', 'Construction methods'], ['boxes', 'Cabinet boxes']];
+type Tab = 'materials' | 'methods' | 'boxes' | 'users';
+const TABS: [Tab, string][] = [['materials', 'Materials & hardware'], ['methods', 'Construction methods'], ['boxes', 'Cabinet boxes'], ['users', 'Users']];
 
 export type Update = (fn: (c: ShopConfig) => ShopConfig) => void;
 
 /** Admin page: shop-wide choices and construction methods, autosaved to /api/shop. */
-export function AdminApp({ initial, skuImages }: { initial: ShopConfig; skuImages: string[] }) {
+export function AdminApp({ initial, skuImages, users, me }: { initial: ShopConfig; skuImages: string[]; users: User[]; me: { id: string; username: string; role: 'admin' | 'user' } }) {
   const [cfg, setCfg] = useState(initial);
   const [tab, setTab] = useState<Tab>('materials');
   const save = useAutosave('/api/shop', cfg);
@@ -32,7 +35,8 @@ export function AdminApp({ initial, skuImages }: { initial: ShopConfig; skuImage
           <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
           <div className="rounded-full bg-ink px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.12em] text-white uppercase">Admin</div>
           <SaveIndicator state={save.state} />
-          <Link href="/" className="ml-auto text-[13px] font-bold">← Back to jobs</Link>
+          <UserMenu user={me} admin />
+          <Link href="/" className="text-[13px] font-bold">← Back to jobs</Link>
         </div>
 
         <div className="flex flex-col gap-1">
@@ -55,6 +59,7 @@ export function AdminApp({ initial, skuImages }: { initial: ShopConfig; skuImage
         {tab === 'materials' && <OptionsEditor cfg={cfg} update={update} />}
         {tab === 'methods' && <MethodsEditor cfg={cfg} update={update} />}
         {tab === 'boxes' && <BoxesEditor cfg={cfg} update={update} skuImages={skuImages} />}
+        {tab === 'users' && <UsersEditor initial={users} me={me} />}
 
         <div className="flex items-center gap-3 border-t border-line-2 pt-4 pb-6 text-xs text-muted">
           <div>Choices and methods are shared by everyone using this database.</div>

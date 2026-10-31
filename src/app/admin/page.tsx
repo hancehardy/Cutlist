@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Metadata } from 'next';
 import { AdminApp } from '@/components/admin/AdminApp';
-import { getShopConfig } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth';
+import { getShopConfig, listUsers } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Admin · Cabinet Cutlist' };
@@ -14,6 +15,7 @@ function skuImages(): string[] {
   } catch { return []; }
 }
 
-export default function AdminPage() {
-  return <AdminApp initial={getShopConfig()} skuImages={skuImages()} />;
+export default async function AdminPage() {
+  const me = await requireAdmin();
+  return <AdminApp initial={getShopConfig()} skuImages={skuImages()} users={listUsers()} me={{ id: me.id, username: me.username, role: me.role }} />;
 }
