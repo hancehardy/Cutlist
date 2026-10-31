@@ -79,7 +79,7 @@ export const DEFAULTS = {
   smallFront: 6.1875, boxDeduct: 1.9375, smallBoxH: 4, bigBoxH: 8, xlBoxH: 10,
   rolloutH: 3.5, rolloutSpacer: 1,
   glideSeries: '563H', glideLens: '9, 12, 15, 18, 21', glideDeduct: 3,
-  kerf: 0.187, sheetL: 97, sheetW: 49,
+  kerf: 0.187, sheetL: 97, sheetW: 49, edgeTrim: 0.25,
   caseMat: '3/4 2s Melamine', backMat: '1/4 1s Melamine', frontMat: '3/4 2s Melamine',
   doorSplit: 24, tallLowerDoor: 30, pull: '4in C-Pull', hinge: 'Blum 110° Clip-top', shelfSetback: 1, shelfClear: 0.0625,
   drawerStyle: '5 Piece Drawer', doorStyle: 'Slab (Melamine)',
@@ -94,7 +94,7 @@ export const DEFAULT_FIELDS: [DefaultKey, string][] = [
   ['smallFront', 'Top drawer front height'], ['boxDeduct', 'Drawer box width deduct'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
   ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
   ['glideDeduct', 'Glide deduct from depth'], ['doorSplit', 'Two doors above width'], ['tallLowerDoor', 'Tall lower door height'],
-  ['shelfSetback', 'Shelf setback'], ['kerf', 'Kerf'], ['sheetL', 'Sheet length'], ['sheetW', 'Sheet width'],
+  ['shelfSetback', 'Shelf setback'], ['kerf', 'Kerf'], ['sheetL', 'Sheet length'], ['sheetW', 'Sheet width'], ['edgeTrim', 'Edge trim (1 long + 1 short edge)'],
 ];
 export const DEFAULT_TEXT: [DefaultKey, string][] = [
   ['caseMat', 'Case material'], ['backMat', 'Back material'], ['frontMat', 'Front material'],
@@ -270,16 +270,21 @@ export interface MaterialRow { desc: string; w: number; l: number; grain: Grain;
 export interface Material { name: string; rows: MaterialRow[]; rips: string }
 export interface DoorRow { w: number; l: number; type: 'DR' | 'FF' | 'DF'; qty: number; cabs: string[]; size: string; cabsTxt: string }
 export interface DrawerRow extends DrawerBox { cabs: string[]; wTxt: string; dTxt: string; hTxt: string; cabsTxt: string }
-export interface NestPart {
+/** A part placed on a sheet. Drawing coordinates: x along the sheet length (grain), y across its width. */
+export interface SawPart {
   id: number; name: string; along: number; across: number; grain: Grain; cab: number;
   alongTxt: string; acrossTxt: string; label: string; sub: string;
-  sx: number; sy: number; sw: number; sh: number; tx: number; ty: number; arrow: string;
+  x: number; y: number; tx: number; ty: number; arrow: string;
+  /** Cut from a wider strip, so it needs an extra rip down to width. */
+  recut: boolean;
 }
-export interface NestSheet { title: string; yieldTxt: string; parts: NestPart[] }
-export interface Nest { name: string; L: number; W: number; oversize: { name: string; along: number; across: number }[]; sheets: NestSheet[] }
+/** One saw cut, numbered in the order the operator makes it. */
+export interface SawCut { n: number; kind: 'trim' | 'rip' | 'cross' | 'recut'; x1: number; y1: number; x2: number; y2: number; text: string }
+export interface SawSheet { title: string; yieldTxt: string; parts: SawPart[]; cuts: SawCut[]; strips: { y: number; w: number }[] }
+export interface SawPlan { name: string; L: number; W: number; trim: number; oversize: { name: string; along: number; across: number }[]; sheets: SawSheet[] }
 export interface JobResult {
   d: Resolved; cabs: BuiltCabinet[]; materials: Material[]; doors: DoorRow[]; drawers: DrawerRow[];
-  hardware: HardwareItem[]; nests: Nest[];
+  hardware: HardwareItem[]; sawPlans: SawPlan[];
   summary: { nParts: number; nFronts: number; nDrawers: number; sheets: number };
 }
 
@@ -334,15 +339,17 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
     for (const h of cb.hardware) { const k = `${h.item}|${h.spec}`; hw[k] = hw[k] || { ...h, qty: 0 }; hw[k].qty += h.qty * cb.qty; }
   }
   const hardware = Object.values(hw);
-  const nests = materials.map(m => nestMaterial(m, built, d, f));
+  const sawPlans = materials.map(m => sawPlan(m, built, d, f));
   const nFronts = doors.reduce((s, r) => s + r.qty, 0), nDrawers = drawers.reduce((s, r) => s + r.qty, 0);
   const nParts = materials.reduce((s, m) => s + m.rows.reduce((t, r) => t + r.qty, 0), 0);
-  return { d, cabs: built, materials, doors, drawers, hardware, nests, summary: { nParts, nFronts, nDrawers, sheets: nests.reduce((s, n) => s + n.sheets.length, 0) } };
+  return { d, cabs: built, materials, doors, drawers, hardware, sawPlans, summary: { nParts, nFronts, nDrawers, sheets: sawPlans.reduce((s, n) => s + n.sheets.length, 0) } };
 }
 
-// Grain-locked row packer: parts are never rotated.
-function nestMaterial(m: Material, built: BuiltCabinet[], d: Resolved, f: Fmt): Nest {
-  type Item = { id: number; name: string; along: number; across: number; grain: Grain; cab: number; oversize?: boolean };
+// Panel saw optimizer (two-stage guillotine). Each sheet is trimmed on one long and one short
+// edge, ripped into full-length strips along the grain, then each strip is crosscut into parts.
+// Parts are never rotated. A part narrower than its strip gets one extra rip down to width.
+function sawPlan(m: Material, built: BuiltCabinet[], d: Resolved, f: Fmt): SawPlan {
+  type Item = { id: number; name: string; along: number; across: number; grain: Grain; cab: number };
   const items: Item[] = [];
   let n = 0;
   for (const cb of built) {
@@ -355,43 +362,73 @@ function nestMaterial(m: Material, built: BuiltCabinet[], d: Resolved, f: Fmt): 
       }
     }
   }
-  items.sort((a, b) => b.along - a.along || b.across - a.across);
-  const L = d.sheetL, Wd = d.sheetW, k = d.kerf;
-  type Row = { y: number; h: number; x: number };
-  type Sheet = { rows: Row[]; used: number; parts: (Item & { x: number; y: number })[] };
-  const sheets: Sheet[] = [];
-  for (const it of items) {
-    if (it.along > L || it.across > Wd) { it.oversize = true; continue; }
-    let placed = false;
-    for (const s of sheets) {
-      for (const r of s.rows) {
-        if (it.along <= r.h && r.x + it.across <= Wd) { s.parts.push({ ...it, x: r.x, y: r.y }); r.x += it.across + k; placed = true; break; }
-      }
-      if (placed) break;
-      if (s.used + it.along <= L) {
-        const r = { y: s.used, h: it.along, x: it.across + k };
-        s.rows.push(r); s.parts.push({ ...it, x: 0, y: r.y }); s.used += it.along + k; placed = true; break;
-      }
-    }
-    if (!placed) {
-      const s: Sheet = { rows: [{ y: 0, h: it.along, x: it.across + k }], used: it.along + k, parts: [{ ...it, x: 0, y: 0 }] };
-      sheets.push(s);
-    }
+  const L = d.sheetL, W = d.sheetW, k = d.kerf, t = Math.max(0, d.edgeTrim);
+  const UL = L - t, UW = W - t, eps = 1e-6;
+  const oversize = items.filter(it => it.along > UL + eps || it.across > UW + eps);
+  const fits = items.filter(it => !oversize.includes(it));
+
+  // Stage 2 first: fill strips. Widest parts first; same-width strip if one has room, otherwise
+  // the leftover length of the narrowest wider strip, otherwise a new strip at this part's width.
+  type Strip = { w: number; len: number; parts: Item[] };
+  const strips: Strip[] = [];
+  const room = (s: Strip, it: Item) => s.len + (s.parts.length ? k : 0) + it.along <= UL + eps;
+  fits.sort((a, b) => b.across - a.across || b.along - a.along);
+  for (const it of fits) {
+    const exact = strips.find(s => Math.abs(s.w - it.across) < eps && room(s, it));
+    const wider = exact ? undefined : strips.filter(s => s.w > it.across + eps && room(s, it)).sort((a, b) => a.w - b.w || b.len - a.len)[0];
+    const s = exact ?? wider ?? (strips[strips.push({ w: it.across, len: 0, parts: [] }) - 1]);
+    s.len += (s.parts.length ? k : 0) + it.along;
+    s.parts.push(it);
   }
+
+  // Stage 1: rip strips out of sheets, widest first, first sheet with room across its width.
+  type Sheet = { used: number; strips: Strip[] };
+  const sheets: Sheet[] = [];
+  for (const s of [...strips].sort((a, b) => b.w - a.w || b.len - a.len)) {
+    const sh = sheets.find(x => x.used + (x.strips.length ? k : 0) + s.w <= UW + eps) ?? (sheets[sheets.push({ used: 0, strips: [] }) - 1]);
+    sh.used += (sh.strips.length ? k : 0) + s.w;
+    sh.strips.push(s);
+  }
+
   const total = sheets.length;
   return {
-    name: m.name, L, W: Wd, oversize: items.filter(i => i.oversize),
-    sheets: sheets.map((s, i) => {
-      const area = s.parts.reduce((a, p) => a + p.along * p.across, 0);
+    name: m.name, L, W, trim: t, oversize,
+    sheets: sheets.map((sh, i) => {
+      const cuts: SawCut[] = [], parts: SawPart[] = [], stripBoxes: { y: number; w: number }[] = [];
+      const cut = (kind: SawCut['kind'], x1: number, y1: number, x2: number, y2: number, text: string) =>
+        cuts.push({ n: cuts.length + 1, kind, x1, y1, x2, y2, text });
+      if (t > 0) {
+        cut('trim', 0, t, L, t, `Trim ${f(t)}" off the long edge`);
+        cut('trim', t, t, t, W, `Trim ${f(t)}" off the short edge`);
+      }
+      // Rips: one per strip, except where the strip ends at the sheet edge.
+      let y = t;
+      sh.strips.forEach((s, si) => {
+        stripBoxes.push({ y, w: s.w });
+        if (y + s.w < W - k) cut('rip', t, y + s.w, L, y + s.w, `Rip strip ${si + 1} at ${f(s.w)}"`);
+        y += s.w + k;
+      });
+      // Crosscuts strip by strip, plus a rip down to width for any narrower part.
+      sh.strips.forEach((s, si) => {
+        const sy = stripBoxes[si].y;
+        let x = t;
+        for (const it of s.parts) {
+          const recut = it.across < s.w - eps;
+          if (x + it.along < L - k) cut('cross', x + it.along, sy, x + it.along, sy + s.w, `Strip ${si + 1}: crosscut ${f(it.along)}" → #${it.id} ${it.name}`);
+          if (recut) cut('recut', x, sy + it.across, x + it.along, sy + it.across, `Rip #${it.id} down to ${f(it.across)}"`);
+          parts.push({
+            id: it.id, name: it.name, along: it.along, across: it.across, grain: it.grain, cab: it.cab,
+            alongTxt: f(it.along), acrossTxt: f(it.across), label: `#${it.id} ${it.name}`, sub: `${f(it.along)} x ${f(it.across)} cab ${it.cab}`,
+            x, y: sy, tx: x + it.along / 2, ty: sy + it.across / 2, arrow: it.grain === 'Vertical' ? '→' : '↕', recut,
+          });
+          x += it.along + k;
+        }
+      });
+      const area = parts.reduce((a, p) => a + p.along * p.across, 0);
       return {
-        title: `${m.name} — Sheet ${i + 1} of ${total} (${f(Wd)} x ${f(L)})`,
-        yieldTxt: `Yield ${((100 * area) / (L * Wd)).toFixed(1)}%`,
-        parts: s.parts.map(p => ({
-          id: p.id, name: p.name, along: p.along, across: p.across, grain: p.grain, cab: p.cab,
-          alongTxt: f(p.along), acrossTxt: f(p.across), label: `#${p.id} ${p.name}`, sub: `${f(p.along)} x ${f(p.across)} cab ${p.cab}`,
-          sx: p.y, sy: p.x, sw: p.along, sh: p.across, tx: p.y + p.along / 2, ty: p.x + p.across / 2,
-          arrow: p.grain === 'Vertical' ? '→' : '↕',
-        })),
+        title: `${m.name} — Sheet ${i + 1} of ${total} (${f(W)} x ${f(L)})`,
+        yieldTxt: `Yield ${((100 * area) / (L * W)).toFixed(1)}%`,
+        parts, cuts, strips: stripBoxes,
       };
     }),
   };
