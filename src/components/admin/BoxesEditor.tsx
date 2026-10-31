@@ -1,21 +1,18 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
-  BUILD_STYLES, FACE_H_RULES, fmt, newFace, parseDim, resolveDefaults, typesIn,
-  type CabCategory, type CabType, type FaceSpec, type Hinge, type Kind,
+  BUILD_STYLES, buildCabinet, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, typesIn,
+  type CabCatalog, type CabCategory, type CabType, type FaceSpec, type Resolved, type SectionInput,
 } from '@/lib/engine';
 import { presetKey, type ShopConfig } from '@/lib/shop';
-import { Elevation, TypeThumb, sampleCabinet } from '../Elevation';
-import { Segmented, Stepper } from '../fields';
+import { FaceEditor } from '../Configurator';
+import { TypeThumb } from '../Elevation';
 import type { Update } from './AdminApp';
 
-const KINDS: [Kind, string][] = [['drawer', 'Drawer'], ['door', 'Door'], ['false', 'False'], ['open', 'Open']];
-const LETTERS = 'ABCDEFGHIJKLMNOP';
 const pill = 'rounded-full border border-rule bg-white px-3 py-1.5 text-xs font-bold text-ink hover:border-ink disabled:opacity-40 disabled:hover:border-rule';
 const iconBtn = 'h-7 w-7 rounded-md border-none bg-transparent text-sm text-muted hover:bg-line-2 hover:text-ink disabled:opacity-30';
 const lab = 'flex flex-col gap-1 text-[11px] font-bold tracking-[0.14em] text-muted uppercase';
 const inp = 'field px-2.5 py-2 text-[14px] tracking-normal text-ink normal-case';
-const FIXED = '__fixed__';
 
 function Card({ title, sub, right, children }: { title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -36,6 +33,33 @@ const newCode = (base: string, taken: string[]) => {
   return code;
 };
 
+/**
+ * A box's standard faces in the same configurator window a job uses. The faces are edited as a layout
+ * (heights as text) on a 30"-wide preview of the box and written back as face specs; a typed height
+ * that equals a rule is saved as that rule, and "auto" shelves stay auto.
+ */
+function BoxFaces({ type, d, catalog, onFaces }: { type: CabType; d: Resolved; catalog: CabCatalog; onFaces: (faces: FaceSpec[]) => void }) {
+  const H = parseDim(type.h);
+  const toLayout = (faces: FaceSpec[]): SectionInput[] => resolveFaces(faces, d, H).map(s => ({ ...s, h: typeof s.h === 'number' ? fmt(s.h) : s.h }));
+  const [layout, setLayout] = useState(() => toLayout(type.faces));
+  const [selSec, setSelSec] = useState(0);
+  // Re-derive the layout when the faces change from elsewhere (restore defaults), not from our own writes.
+  const pushed = useRef(type.faces);
+  if (type.faces !== pushed.current) { pushed.current = type.faces; setLayout(toLayout(type.faces)); }
+  const built = buildCabinet({ id: 0, type: type.code, w: '30', h: type.h, d: type.d, toe: type.toe, qty: '1', layout }, d, 0, undefined, catalog);
+  const change = (next: SectionInput[]) => {
+    setLayout(next);
+    const faces = facesFromSections(next, d, { prev: type.faces, H });
+    pushed.current = faces;
+    onFaces(faces);
+  };
+  if (built.bad) return <div className="rounded-lg bg-canvas px-4 py-10 text-center text-[15px] text-muted">Give the box a height and depth to see the drawing.</div>;
+  return (
+    <FaceEditor built={built} layout={layout} d={d} f={fmt} selSec={selSec} onSelectSec={setSelSec} onLayout={change}
+      toolbar={<span>Preview 30&quot; wide · a height equal to a rule follows that rule</span>} />
+  );
+}
+
 /** The Cabinet boxes tab: categories, the box types in each, and a selected box's size, image and standard faces. */
 export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; update: Update; skuImages: string[] }) {
   const { categories, types } = cfg.catalog;
@@ -48,7 +72,6 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
   const [codeErr, setCodeErr] = useState('');
   // Preview with the default method's rules.
   const d = useMemo(() => resolveDefaults(cfg.presets[0]?.values), [cfg.presets]);
-  const sample = type ? sampleCabinet(type, d, cfg.catalog) : null;
 
   const setCatalog = (fn: (k: ShopConfig['catalog']) => ShopConfig['catalog']) => update(c => ({ ...c, catalog: fn(c.catalog) }));
   const patchCat = (fn: (c: CabCategory) => CabCategory) => setCatalog(k => ({ ...k, categories: k.categories.map(c => (c.key === cat.key ? fn(c) : c)) }));
@@ -56,8 +79,6 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
     const code = type?.code;
     if (code) setCatalog(k => ({ ...k, types: k.types.map(t => (t.code === code ? fn(t) : t)) }));
   };
-  const patchFace = (i: number, fn: (f: FaceSpec) => FaceSpec) => patchType(t => ({ ...t, faces: t.faces.map((f, j) => (j === i ? fn(f) : f)) }));
-  const setFaces = (fn: (faces: FaceSpec[]) => FaceSpec[]) => patchType(t => ({ ...t, faces: fn(t.faces.map(f => ({ ...f }))) }));
 
   const pickCat = (key: string) => { setSelCat(key); setSelCode(typesIn(cfg.catalog, key)[0]?.code ?? ''); setCodeDraft(null); };
   const addCategory = () => {
@@ -97,7 +118,6 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
     const n = parseDim(t[k]);
     return { ...t, [k]: isNaN(n) || n < 0 || (k !== 'toe' && n === 0) ? (k === 'toe' ? '0' : k === 'h' ? '30' : '24') : fmt(n) };
   });
-  const hMode = (f: FaceSpec) => (f.h === '' ? '' : FACE_H_RULES.some(([k]) => k === f.h) ? f.h : FIXED);
 
   if (!cat) return <div className="text-sm text-muted">No categories yet. Restore the built-in defaults below.</div>;
   const tile = (on: boolean) => `flex flex-col gap-1 rounded-lg px-3 py-2.5 text-left text-ink hover:border-ink ${on ? 'border-2 border-accent bg-sel' : 'border border-line bg-white'}`;
@@ -184,86 +204,8 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
         <div className="text-xs text-muted">Renaming a code does not update cabinets already saved with the old code; they keep it and show a warning.</div>
       </Card>
 
-      <Card title="Standard faces" sub="Top to bottom · what a new cabinet of this box starts with">
-        <div className="grid items-start gap-6" style={{ gridTemplateColumns: 'minmax(200px,1fr) minmax(300px,2fr)' }}>
-          <div className="flex flex-col gap-2">
-            {sample && <Elevation cab={sample} className="block max-h-[320px] w-full" title={`Preview of ${type.code}`} />}
-            <div className="text-xs text-muted">Preview at 30&quot; wide, {type.h}&quot; high with the {cfg.presets[0]?.label ?? 'default'} rules.</div>
-            {sample?.warn && <div className="rounded-lg bg-err-bg px-3 py-2 text-xs text-err">{sample.warn}</div>}
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {type.faces.map((fc, i) => {
-              const sec = sample?.sections[i];
-              const store = fc.kind === 'door' || fc.kind === 'open';
-              const mode = hMode(fc);
-              return (
-                <div key={i} className="flex flex-col gap-2 rounded-lg border border-line bg-white px-3 py-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-md bg-ink text-xs font-extrabold text-white">{LETTERS[i] ?? i + 1}</div>
-                    <Segmented opts={KINDS} value={fc.kind} onChange={k => patchFace(i, f => {
-                      const keep = k === 'door' || k === 'open';
-                      return { ...f, kind: k, split: k === 'door' ? 0 : 1, shelves: keep ? f.shelves : 0, rollouts: keep ? f.rollouts : 0 };
-                    })} />
-                    <label className="flex items-center gap-1.5 text-xs text-muted">
-                      H
-                      <select value={mode} aria-label={`Face ${LETTERS[i]} height`} className="field px-1.5 py-1.5 text-[12px] text-ink"
-                        onChange={e => { const v = e.target.value; patchFace(i, f => ({ ...f, h: v === FIXED ? fmt(sec?.h || 6) : v })); }}>
-                        <option value="">Auto (shares the rest)</option>
-                        {FACE_H_RULES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                        <option value={FIXED}>Fixed…</option>
-                      </select>
-                      {mode === FIXED && (
-                        <input value={fc.h} aria-label={`Face ${LETTERS[i]} fixed height`} onChange={e => patchFace(i, f => ({ ...f, h: e.target.value }))}
-                          onBlur={() => patchFace(i, f => { const n = parseDim(f.h); return { ...f, h: isNaN(n) || n <= 0 ? '' : fmt(n) }; })}
-                          className="field w-[72px] px-2 py-1.5 text-center text-[12px] text-ink" />
-                      )}
-                    </label>
-                    <div className="ml-auto flex gap-0.5">
-                      <button className={iconBtn} disabled={i === 0} aria-label="Move up" onClick={() => setFaces(L => { [L[i - 1], L[i]] = [L[i], L[i - 1]]; return L; })}>↑</button>
-                      <button className={iconBtn} disabled={i === type.faces.length - 1} aria-label="Move down" onClick={() => setFaces(L => { [L[i + 1], L[i]] = [L[i], L[i + 1]]; return L; })}>↓</button>
-                      <button className={`${iconBtn} text-[17px] text-faint hover:text-danger`} disabled={type.faces.length < 2} aria-label="Remove face" onClick={() => setFaces(L => L.filter((_, j) => j !== i))}>×</button>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-3">
-                    {fc.kind === 'door' && (
-                      <Stepper label="Doors" value={fc.split || 'Auto'} onDec={() => patchFace(i, f => ({ ...f, split: Math.max(0, f.split - 1) }))} onInc={() => patchFace(i, f => ({ ...f, split: Math.min(4, f.split + 1) }))} />
-                    )}
-                    {fc.kind === 'drawer' && (
-                      <Stepper label="Drawers across" value={fc.split} onDec={() => patchFace(i, f => ({ ...f, split: Math.max(1, f.split - 1) }))} onInc={() => patchFace(i, f => ({ ...f, split: Math.min(4, f.split + 1) }))} />
-                    )}
-                    {store && (
-                      <>
-                        <label className="flex items-center gap-1.5">
-                          Shelves
-                          <select value={fc.shelves === 'auto' ? 'auto' : String(fc.shelves)} aria-label={`Face ${LETTERS[i]} shelves`} className="field px-1.5 py-1 text-[12px] text-ink"
-                            onChange={e => { const v = e.target.value; patchFace(i, f => ({ ...f, shelves: v === 'auto' ? 'auto' : +v })); }}>
-                            <option value="auto">Auto (1 under 30&quot;, 2 from 30&quot;)</option>
-                            {Array.from({ length: 9 }, (_, n) => <option key={n} value={n}>{n}</option>)}
-                          </select>
-                        </label>
-                        <Stepper label="Roll-outs" value={fc.rollouts} onDec={() => patchFace(i, f => ({ ...f, rollouts: Math.max(0, f.rollouts - 1) }))} onInc={() => patchFace(i, f => ({ ...f, rollouts: Math.min(5, f.rollouts + 1) }))} />
-                      </>
-                    )}
-                    {fc.kind === 'door' && fc.split <= 1 && (
-                      <div className="flex items-center gap-1.5">
-                        Hinge
-                        <Segmented<Hinge> opts={[['L', 'Left'], ['R', 'Right']]} value={fc.hinge} onChange={hg => patchFace(i, f => ({ ...f, hinge: hg }))} />
-                      </div>
-                    )}
-                    {sec && <div className="ml-auto font-bold text-ink tabular-nums">{sec.kind === 'open' ? `Opening ${fmt(sec.h)} high` : `${sec.n > 1 ? sec.n + ' × ' : ''}${fmt(sec.pw)} x ${fmt(sec.h)}`}</div>}
-                  </div>
-                </div>
-              );
-            })}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="text-xs font-bold text-muted">Add at the bottom</div>
-              <button onClick={() => setFaces(L => [...L, newFace('drawer', 'smallFront')])} className={pill}>+ Drawer</button>
-              <button onClick={() => setFaces(L => [...L, newFace('door')])} className={pill}>+ Door</button>
-              <button onClick={() => setFaces(L => [...L, newFace('false', 'smallFront')])} className={pill}>+ False front</button>
-              <button onClick={() => setFaces(L => [...L, newFace('open')])} className={pill}>+ Open</button>
-            </div>
-          </div>
-        </div>
+      <Card title="Standard faces" sub="What a new cabinet of this box starts with · the same window as a job's Configure tab">
+        <BoxFaces key={type.code} type={type} d={d} catalog={cfg.catalog} onFaces={faces => patchType(t => ({ ...t, faces }))} />
       </Card>
       </>)}
     </div>

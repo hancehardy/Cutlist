@@ -347,6 +347,15 @@ describe('saving a job cabinet\'s faces as a box', () => {
     expect(resolveFaces(faces, resolveDefaults({ smallFront: '7' }), 34.5)[0].h).toBe(7);
   });
 
+  it('keeps auto shelves while the count still matches, when editing a box in Admin', () => {
+    const prev = [newFace('door', '', { shelves: 'auto' })];
+    const layout = resolveFaces(prev, d, 30).map(s => ({ ...s, h: '' as const, rollouts: 2 }));
+    expect(facesFromSections(layout, d, { prev, H: 30 })[0]).toMatchObject({ shelves: 'auto', rollouts: 2 });
+    // Changing the count makes it a fixed number; without the previous faces it is always a number.
+    expect(facesFromSections(layout.map(s => ({ ...s, shelves: 3 })), d, { prev, H: 30 })[0].shelves).toBe(3);
+    expect(facesFromSections(layout, d)[0].shelves).toBe(2);
+  });
+
   it('builds the same cabinet from the saved box as from the custom layout', () => {
     const layout = [newSection('false', '6 3/16'), newSection('door', '', { shelves: 1, rollouts: 2 })];
     const custom = buildJob([{ id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1', layout }], {}).cabs[0];
