@@ -216,3 +216,30 @@ describe('front styles config', () => {
     expect(kept.fronts).toEqual({ door: { name: 'X', slab: false, grain: 'Vertical' }, drawer: { name: 'Y', slab: true, grain: 'Horizontal' } });
   });
 });
+
+describe('accessory boxes in the catalog', () => {
+  it('ships an Accessory category of panels and validates panel settings', () => {
+    const c = defaultShopConfig().catalog;
+    expect(c.categories.find(x => x.key === 'accessory')?.style).toBe('panel');
+    expect(c.types.filter(t => t.cat === 'accessory').map(t => [t.code, t.w, t.panel?.band])).toEqual([['FIL', '3', 'long'], ['EP', '24', 'long'], ['TK', '96', 'none']]);
+    const n = normType({ code: 'X', cat: 'accessory', faces: [{ kind: 'door' }], d: '24', toe: '4', w: 'abc', panel: { mat: 'nowhere', grain: 'Horizontal', band: 'some' } }, c.categories)!;
+    expect(n).toMatchObject({ faces: [], d: '0', toe: '0', panel: { mat: 'front', grain: 'Horizontal', band: 'long' } });
+    expect(n.w).toBeUndefined();
+    expect(normType({ code: 'Y', cat: 'base', w: '18' }, c.categories)).toMatchObject({ w: '18' });
+    expect(normType({ code: 'Z', cat: 'base' }, c.categories)!.panel).toBeUndefined();
+  });
+});
+
+describe('accessory migration', () => {
+  it('adds the Accessory panels once to a shop saved before version 3, and not again after', () => {
+    const old = { version: 2, catalog: { categories: [{ key: 'base', label: 'Base', style: 'base' }], types: [{ code: 'B', cat: 'base', faces: [{ kind: 'door' }] }] } };
+    const c = normalizeShopConfig(old);
+    expect(c.version).toBe(3);
+    expect(c.catalog.categories.map(x => [x.key, x.style])).toEqual([['base', 'base'], ['accessory', 'panel']]);
+    expect(c.catalog.types.map(t => t.code)).toEqual(['B', 'FIL', 'EP', 'TK']);
+    // The admin removes them; a version-3 document stays as saved.
+    const trimmed = normalizeShopConfig({ ...c, catalog: { categories: [c.catalog.categories[0]], types: [c.catalog.types[0]] } });
+    expect(trimmed.catalog.categories.map(x => x.key)).toEqual(['base']);
+    expect(trimmed.catalog.types.map(t => t.code)).toEqual(['B']);
+  });
+});

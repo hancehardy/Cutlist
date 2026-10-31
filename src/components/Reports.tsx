@@ -92,7 +92,7 @@ export function AssemblySheets({ r, f, job, today }: ReportCtx) {
   const partHeads = ['Qty', 'W', 'L', 'Description', 'Grain', 'Material'];
   return (
     <>
-      {r.cabs.filter(c => !c.bad).map(c => {
+      {r.cabs.filter(c => !c.bad && !c.panel).map(c => {
         const pad = Math.max(c.W, c.boxH) * 0.14, fs = Math.max(c.W, c.boxH) / 22, dimX = -pad * 0.5;
         const sizeTxt = `${f(c.W)} x ${f(c.H)} x ${f(c.D)}`;
         const partRows = (ps: typeof c.parts) => ps.map((p, i) => ({ key: i, cells: [

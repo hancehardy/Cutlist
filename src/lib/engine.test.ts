@@ -446,3 +446,33 @@ describe('front styles', () => {
     expect(job.d.fronts).toMatchObject({ drawerGrain: 'Horizontal', drawerFrontStyle: 'Slab H', doorSlab: true, drawerSlab: true });
   });
 });
+
+describe('accessories (cut panels)', () => {
+  const build = (type: string, w: string, h: string) => buildJob([{ id: 1, type, w, h, d: '', toe: '', qty: '1' }], {});
+
+  it('a filler is one panel of the front material, banded on the long edge, with no faces or hardware', () => {
+    const job = build('FIL', '3', '34 1/2');
+    const c = job.cabs[0];
+    expect(c.panel).toBe(true);
+    expect(c.bad).toBe(false); // no depth needed
+    expect(c.parts).toEqual([{ qty: 1, desc: 'Filler', w: 3, l: 34.5, grain: 'Vertical', mat: '3/4 2s Melamine', band: 34.5, cut: true }]);
+    expect(c.fronts).toEqual([]); expect(c.hardware).toEqual([]); expect(c.sections).toEqual([]);
+    expect(job.doors).toEqual([]);
+    expect(job.materials.map(m => [m.name, m.rows[0].desc])).toEqual([['3/4 2s Melamine', 'Filler']]);
+    expect(job.summary.sheets).toBe(1);
+    expect(c.label).toBe('3" x 34 1/2" Filler');
+  });
+
+  it('a toe kick skin runs horizontal with no banding; an end panel bands its long edge', () => {
+    const tk = build('TK', '96', '4 1/2').cabs[0].parts[0];
+    expect(tk).toMatchObject({ desc: 'Toe kick skin', w: 96, l: 4.5, grain: 'Horizontal', band: 0 });
+    const ep = build('EP', '24', '34 1/2').cabs[0].parts[0];
+    expect(ep).toMatchObject({ desc: 'End panel', w: 24, l: 34.5, grain: 'Vertical', band: 34.5 });
+  });
+
+  it('a custom panel box can cut from the case material with all edges banded', () => {
+    const catalog: CabCatalog = { ...BUILTIN_CATALOG, types: [...BUILTIN_CATALOG.types, { code: 'SHF', cat: 'accessory', label: 'Loose shelf', img: '', h: '12', d: '0', toe: '0', faces: [], w: '30', panel: { mat: 'case', grain: 'Horizontal', band: 'all' } }] };
+    const p = buildJob([{ id: 1, type: 'SHF', w: '30', h: '12', d: '', toe: '', qty: '1' }], {}, 'fraction', null, catalog).cabs[0].parts[0];
+    expect(p).toMatchObject({ mat: '3/4 2s Melamine', grain: 'Horizontal', band: 84 });
+  });
+});

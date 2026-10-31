@@ -246,7 +246,12 @@ export function Configurator({ cabs, built, catalog, d, f, selId, selSec, onSele
   if (!sc) return shell(<>{header('Configure', 'No cabinets')}{empty('Add a cabinet to configure it.')}</>);
 
   const t = typeFor(catalog, sc.type);
-  if (sb.bad) return shell(<>{header(`Configure · cabinet ${selIdx + 1} of ${cabs.length}`, `#${selIdx + 1} ${sb.code}`, t?.label)}{empty('Enter width, height and depth to see the drawing.')}</>);
+  if (sb.bad) return shell(<>{header(`Configure · cabinet ${selIdx + 1} of ${cabs.length}`, `#${selIdx + 1} ${sb.code}`, t?.label)}{empty(sb.panel ? 'Enter width and height.' : 'Enter width, height and depth to see the drawing.')}</>);
+  if (sb.panel) {
+    const p = sb.parts[0];
+    return shell(<>{header(`Configure · cabinet ${selIdx + 1} of ${cabs.length}`, `#${selIdx + 1} ${sb.code}`, `${categoryLabel(catalog, t?.cat)} · ${t?.label ?? sc.type} · ${f(sb.W)} W x ${f(sb.H)} H`)}
+      {empty(`An accessory: one ${f(p.w)} x ${f(p.l)} panel of ${p.mat}, grain ${p.grain.toLowerCase()}${p.band ? `, ${f(p.band)}" of edge banding` : ''}. Nothing to configure.`)}</>);
+  }
 
   // Editable layout: the saved custom one, or the type's standard layout with heights as text.
   const cur: SectionInput[] = sc.layout || defaultLayout(sc.type, d, parseDim(sc.h), catalog).map(s => ({ ...s, h: typeof s.h === 'number' ? f(s.h) : s.h }));

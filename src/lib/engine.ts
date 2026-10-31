@@ -54,12 +54,18 @@ export const makeFmt = (mode: DimFormat): Fmt => n => fmt(n, mode);
 // edits its own copy on the Admin page and passes it to buildJob.
 
 /** How a category's case goes together. */
-export type BuildStyle = 'base' | 'wall' | 'tall';
+export type BuildStyle = 'base' | 'wall' | 'tall' | 'panel';
 export const BUILD_STYLES: [BuildStyle, string][] = [
   ['base', 'Base: open top with stretchers, deck, toe kick'],
   ['wall', 'Wall: full top and bottom, two nailers'],
   ['tall', 'Tall: full top, deck, one nailer, toe kick'],
+  ['panel', 'Accessory: one cut panel (filler, end panel, toe kick skin), no case or faces'],
 ];
+
+/** How an accessory panel is cut: which job material, grain, and which edges are banded. */
+export interface PanelSpec { mat: MatSlot; grain: Grain; band: 'none' | 'long' | 'all' }
+export const DEFAULT_PANEL: PanelSpec = { mat: 'front', grain: 'Vertical', band: 'long' };
+export const PANEL_BANDS: [PanelSpec['band'], string][] = [['none', 'None'], ['long', 'One long edge'], ['all', 'All four edges']];
 export interface CabCategory { key: string; label: string; style: BuildStyle }
 
 /** Rules a standard face height can follow instead of a fixed dimension. */
@@ -69,8 +75,11 @@ export const FACE_H_RULES: [string, string][] = [['smallFront', 'Top drawer fron
  * dimension as typed. `shelves: 'auto'` means one shelf under 30" tall, two from 30".
  */
 export interface FaceSpec { kind: Kind; h: string; split: number; shelves: number | 'auto'; rollouts: number; hinge: Hinge }
-/** A box type: the code jobs refer to, its category, picker image (blank = drawn from the faces), default size and standard faces. */
-export interface CabType { code: string; cat: string; label: string; img: string; h: string; d: string; toe: string; faces: FaceSpec[] }
+/**
+ * A box type: the code jobs refer to, its category, picker image (blank = drawn from the faces), default size and standard
+ * faces. `w` is a default width applied when the box is picked (fillers, toe kicks); `panel` is how an accessory is cut.
+ */
+export interface CabType { code: string; cat: string; label: string; img: string; h: string; d: string; toe: string; faces: FaceSpec[]; w?: string; panel?: PanelSpec }
 export interface CabCatalog { categories: CabCategory[]; types: CabType[] }
 
 export const newFace = (kind: Kind, h = '', o: Partial<FaceSpec> = {}): FaceSpec =>
@@ -82,7 +91,10 @@ const T = (code: string, cat: string, img: string, label: string, h: string, d: 
 export const BUILTIN_CATEGORIES: CabCategory[] = [
   { key: 'base', label: 'Base', style: 'base' }, { key: 'wall', label: 'Wall', style: 'wall' },
   { key: 'tall', label: 'Tall', style: 'tall' }, { key: 'vanity', label: 'Vanity', style: 'base' },
+  { key: 'accessory', label: 'Accessory', style: 'panel' },
 ];
+const A = (code: string, label: string, w: string, h: string, panel: Partial<PanelSpec> = {}): CabType =>
+  ({ code, cat: 'accessory', label, img: '', h, d: '0', toe: '0', faces: [], w, panel: { ...DEFAULT_PANEL, ...panel } });
 export const BUILTIN_TYPES: CabType[] = [
   T('B', 'base', 'base-1td', '1 drawer, doors', '34 1/2', '24', '4 1/2', [F('drawer', 'smallFront'), F('door', '', { shelves: 1 })]),
   T('BD', 'base', 'base-fh', 'Full-height doors', '34 1/2', '24', '4 1/2', [F('door', '', { shelves: 1 })]),
@@ -97,6 +109,9 @@ export const BUILTIN_TYPES: CabType[] = [
   T('V', 'vanity', 'van-fh', 'Doors', '30', '21', '0', [F('door')]),
   T('VSB', 'vanity', 'van-sink', 'Sink, false front + doors', '30', '21', '0', [F('false', 'smallFront'), F('door')]),
   T('V3DB', 'vanity', 'van-3d', '3 drawer', '30', '21', '0', [F('drawer', 'smallFront'), F('drawer'), F('drawer')]),
+  A('FIL', 'Filler', '3', '34 1/2'),
+  A('EP', 'End panel', '24', '34 1/2'),
+  A('TK', 'Toe kick skin', '96', '4 1/2', { grain: 'Horizontal', band: 'none' }),
 ];
 export const BUILTIN_CATALOG: CabCatalog = { categories: BUILTIN_CATEGORIES, types: BUILTIN_TYPES };
 
@@ -252,6 +267,8 @@ export interface BuiltCabinet {
   idx: number; type: string; cat: string; code: string; label: string; W: number; H: number; D: number; toe: number;
   parts: Part[]; fronts: Part[]; drawers: DrawerBox[]; hardware: HardwareItem[]; sections: Section[];
   warn: string; custom: boolean; bad: boolean; qty: number;
+  /** An accessory: a single cut panel, no case, faces or hardware. */
+  panel: boolean;
   boxH: number; isWall: boolean; isTall: boolean; autoH: number; avail: number;
 }
 
@@ -261,13 +278,26 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const known = typeFor(catalog, c.type);
   const t = known ?? catalog.types[0] ?? BUILTIN_TYPES[0];
   const style = categoryFor(catalog, t.cat)?.style ?? 'base';
-  const bad = [W, H, D].some(isNaN) || W <= 0 || H <= 0 || D <= 0 || toe >= H;
+  const panel = style === 'panel';
+  // A panel needs only a width and height; a case needs a depth too.
+  const bad = panel ? [W, H].some(isNaN) || W <= 0 || H <= 0 : [W, H, D].some(isNaN) || W <= 0 || H <= 0 || D <= 0 || toe >= H;
   const out: BuiltCabinet = {
     idx, type: c.type, cat: t.cat, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
     parts: [], fronts: [], drawers: [], hardware: [], sections: [], warn: '', custom: !!c.layout, bad,
-    qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0,
+    qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0, panel,
   };
   if (bad) return out;
+  if (panel) {
+    // An accessory is one panel W wide by H high in the chosen job material; no case, faces or hardware.
+    const spec = t.panel ?? DEFAULT_PANEL;
+    const mat = spec.mat === 'case' ? d.caseMat : spec.mat === 'back' ? d.backMat : d.frontMat;
+    const band = spec.band === 'all' ? 2 * (W + H) : spec.band === 'long' ? Math.max(W, H) : 0;
+    out.parts.push({ qty: 1, desc: t.label, w: W, l: H, grain: spec.grain, mat, band, cut: true });
+    out.label = `${f(W)}" x ${f(H)}" ${t.label}`;
+    out.boxH = H; out.toe = 0;
+    if (!known) out.warn = `Unknown cabinet type ${c.type}: built as ${t.code}. Pick a box from the list.`;
+    return out;
+  }
   const thk = d.caseThk, boxH = H - toe, inW = W - 2 * thk;
   const isWall = style === 'wall', isTall = style === 'tall';
   out.boxH = boxH; out.isWall = isWall; out.isTall = isTall;

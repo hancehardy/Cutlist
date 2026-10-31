@@ -68,7 +68,7 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
   const upd = (id: number, patch: Partial<CabInput>) => setCabs(cs => cs.map(c => (c.id === id ? { ...c, ...patch } : c)));
   const setType = (id: number, type: string) => {
     const t = typeFor(shop.catalog, type);
-    if (t) upd(id, { type, h: f(parseDim(t.h)), d: f(parseDim(t.d)), toe: f(parseDim(t.toe)), layout: null });
+    if (t) upd(id, { type, h: f(parseDim(t.h)), d: f(parseDim(t.d)), toe: f(parseDim(t.toe)), layout: null, ...(t.w ? { w: f(parseDim(t.w)) } : {}) });
   };
   const select = (id: number, sec = 0) => { setSelId(id); setSelSec(sec); };
   const selCabId = (cabs.find(c => c.id === selId) || cabs[0])?.id;

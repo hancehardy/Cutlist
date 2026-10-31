@@ -1,8 +1,8 @@
 // Shop-wide configuration edited on the Admin page: the materials table, the dropdown choices for
 // hardware, the panel saw settings and the construction methods. Stored as one JSON document in SQLite.
 import {
-  BOX_FIELD, BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, FACE_H_RULES, HARDWARE_FIELDS, RULE_KEYS, SAW_FIELDS, fmt, newFace, parseDim,
-  type BuildStyle, type CabCatalog, type CabCategory, type CabType, type DefaultKey, type FaceSpec, type FrontStyle, type Hinge, type JobMaterials, type Kind, type Material, type RawDefaults,
+  BOX_FIELD, BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, DEFAULT_PANEL, FACE_H_RULES, HARDWARE_FIELDS, MAT_SLOTS, PANEL_BANDS, RULE_KEYS, SAW_FIELDS, fmt, newFace, parseDim,
+  type BuildStyle, type CabCatalog, type CabCategory, type CabType, type DefaultKey, type FaceSpec, type FrontStyle, type Hinge, type JobMaterials, type Kind, type Material, type PanelSpec, type RawDefaults,
 } from './engine';
 import { OPTIONS, PRESETS, type Preset } from './presets';
 
@@ -23,8 +23,9 @@ export const sameStyle = (a: FrontStyle, b: FrontStyle, grain: boolean) => a.nam
 export type ShopOptions = Partial<Record<DefaultKey, string[]>>;
 export interface SawSettings { kerf: string; edgeTrim: string }
 
+/** Bump `version` when a migration must run once on stored documents (see normalizeShopConfig). */
 export interface ShopConfig {
-  version: 2;
+  version: 3;
   /** Sheet goods in display order. */
   materials: Material[];
   /** Dropdown choices per hardware field, in display order. An empty list turns the field into free text. */
@@ -56,7 +57,7 @@ export const BUILTIN_MATERIALS: Material[] = [
 /** The built-in materials, choices, saw settings and method the app ships with. */
 export function defaultShopConfig(): ShopConfig {
   return {
-    version: 2,
+    version: 3,
     materials: BUILTIN_MATERIALS.map(m => ({ ...m })),
     options: Object.fromEntries(OPTION_KEYS.map(k => [k, [...OPTIONS[k]!]])),
     doorStyles: BUILTIN_DOOR_STYLES.map(s => ({ ...s })),
@@ -191,15 +192,27 @@ export function normType(raw: unknown, cats: CabCategory[]): CabType | null {
   const code = str(o.code).trim();
   if (!code) return null;
   const faces = Array.isArray(o.faces) ? o.faces.map(normFace).filter((f): f is FaceSpec => !!f) : [];
-  return {
-    code,
-    cat: cats.some(c => c.key === o.cat) ? (o.cat as string) : cats[0].key,
+  const cat = cats.some(c => c.key === o.cat) ? (o.cat as string) : cats[0].key;
+  const isPanel = cats.find(c => c.key === cat)?.style === 'panel';
+  const type: CabType = {
+    code, cat,
     label: str(o.label).trim() || code,
     img: str(o.img).trim(),
-    h: dim(o.h, '30'), d: dim(o.d, '24'),
-    toe: (() => { const t = str(o.toe).trim(), n = parseDim(t); return isNaN(n) || n < 0 ? '0' : t; })(),
-    faces: faces.length ? faces : [newFace('door')],
+    h: dim(o.h, '30'), d: isPanel ? '0' : dim(o.d, '24'),
+    toe: (() => { const t = str(o.toe).trim(), n = parseDim(t); return isNaN(n) || n < 0 || isPanel ? '0' : t; })(),
+    faces: isPanel ? [] : faces.length ? faces : [newFace('door')],
   };
+  const w = str(o.w).trim();
+  if (parseDim(w) > 0) type.w = w;
+  if (isPanel) {
+    const p = (o.panel && typeof o.panel === 'object' ? o.panel : {}) as Record<string, unknown>;
+    type.panel = {
+      mat: MAT_SLOTS.some(([k]) => k === p.mat) ? (p.mat as PanelSpec['mat']) : DEFAULT_PANEL.mat,
+      grain: p.grain === 'Horizontal' ? 'Horizontal' : 'Vertical',
+      band: PANEL_BANDS.some(([k]) => k === p.band) ? (p.band as PanelSpec['band']) : DEFAULT_PANEL.band,
+    };
+  }
+  return type;
 }
 
 /** Validate the cabinet catalog: unique category keys and box codes, faces cleaned up, built-ins when nothing survives. */
@@ -263,11 +276,22 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
       presets.push({ key: presetKey(wanted || label, presets.map(x => x.key)), label, blurb: str(o.blurb).trim(), values: normValues(o.values) });
     }
   }
+  const catalog = normalizeCatalog(r.catalog);
+  // Version 3 added accessories (cut panels). A shop saved before then gets the built-in Accessory category and
+  // its panels once; after that the admin owns the list, so deleting them does not bring them back.
+  if ((Number(r.version) || 1) < 3 && !catalog.categories.some(c => c.style === 'panel')) {
+    const acc = BUILTIN_CATALOG.categories.find(c => c.style === 'panel')!;
+    const key = presetKey(acc.key, catalog.categories.map(c => c.key));
+    catalog.categories.push({ ...acc, key });
+    for (const t of BUILTIN_CATALOG.types.filter(t => t.cat === acc.key)) {
+      if (!catalog.types.some(x => x.code === t.code)) catalog.types.push({ ...t, cat: key, faces: [], panel: { ...t.panel! } });
+    }
+  }
   return {
-    version: 2, materials: materials.length ? materials : builtin.materials, options, saw,
+    version: 3, materials: materials.length ? materials : builtin.materials, options, saw,
     doorStyles: normStyles(r.doorStyles, normList(rawOpts.doorStyle), builtin.doorStyles),
     drawerFrontStyles: normStyles(r.drawerFrontStyles, normList(rawOpts.doorStyle), builtin.drawerFrontStyles),
     presets: presets.length ? presets : builtin.presets,
-    catalog: normalizeCatalog(r.catalog),
+    catalog,
   };
 }

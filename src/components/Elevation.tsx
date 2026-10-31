@@ -2,7 +2,7 @@
 import { buildCabinet, elevShapes, type BuiltCabinet, type CabCatalog, type CabType, type Resolved } from '@/lib/engine';
 
 /** A box type built at its default size (30" wide) for thumbnails and previews. */
-export function sampleCabinet(t: CabType, d: Resolved, catalog: CabCatalog, w = 30): BuiltCabinet {
+export function sampleCabinet(t: CabType, d: Resolved, catalog: CabCatalog, w: number | string = t.w ?? 30): BuiltCabinet {
   return buildCabinet({ id: 0, type: t.code, w: String(w), h: t.h, d: t.d, toe: t.toe, qty: '1', layout: null }, d, 0, undefined, catalog);
 }
 

@@ -1,12 +1,12 @@
 'use client';
 import { useMemo, useRef, useState } from 'react';
 import {
-  BUILD_STYLES, buildCabinet, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, typesIn,
-  type CabCatalog, type CabCategory, type CabType, type FaceSpec, type Resolved, type SectionInput,
+  BUILD_STYLES, DEFAULT_PANEL, MAT_SLOTS, PANEL_BANDS, buildCabinet, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, typesIn,
+  type CabCatalog, type CabCategory, type CabType, type FaceSpec, type Grain, type PanelSpec, type Resolved, type SectionInput,
 } from '@/lib/engine';
 import { presetKey, type ShopConfig } from '@/lib/shop';
 import { FaceEditor } from '../Configurator';
-import { TypeThumb } from '../Elevation';
+import { Elevation, TypeThumb, sampleCabinet } from '../Elevation';
 import type { Update } from './AdminApp';
 
 const pill = 'rounded-full border border-rule bg-white px-3 py-1.5 text-xs font-bold text-ink hover:border-ink disabled:opacity-40 disabled:hover:border-rule';
@@ -96,7 +96,9 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
     const code = newCode(from ? from.code : 'NEW', types.map(t => t.code));
     const t: CabType = from
       ? { ...from, code, label: `${from.label} copy`, faces: from.faces.map(f => ({ ...f })) }
-      : { code, cat: cat.key, label: 'New box', img: '', h: cat.style === 'wall' ? '30' : cat.style === 'tall' ? '84' : '34 1/2', d: cat.style === 'wall' ? '12' : '24', toe: cat.style === 'wall' ? '0' : '4 1/2', faces: [newFace('door')] };
+      : cat.style === 'panel'
+        ? { code, cat: cat.key, label: 'New panel', img: '', h: '34 1/2', d: '0', toe: '0', faces: [], w: '3', panel: { ...DEFAULT_PANEL } }
+        : { code, cat: cat.key, label: 'New box', img: '', h: cat.style === 'wall' ? '30' : cat.style === 'tall' ? '84' : '34 1/2', d: cat.style === 'wall' ? '12' : '24', toe: cat.style === 'wall' ? '0' : '4 1/2', faces: [newFace('door')] };
     setCatalog(k => ({ ...k, types: [...k.types, t] })); setSelCode(code); setCodeDraft(null);
   };
   const removeType = () => {
@@ -120,6 +122,9 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
   });
 
   if (!cat) return <div className="text-sm text-muted">No categories yet. Restore the built-in defaults below.</div>;
+  const isPanel = cat.style === 'panel';
+  const panelSpec: PanelSpec = type?.panel ?? DEFAULT_PANEL;
+  const setPanel = (patch: Partial<PanelSpec>) => patchType(t => ({ ...t, panel: { ...(t.panel ?? DEFAULT_PANEL), ...patch } }));
   const tile = (on: boolean) => `flex flex-col gap-1 rounded-lg px-3 py-2.5 text-left text-ink hover:border-ink ${on ? 'border-2 border-accent bg-sel' : 'border border-line bg-white'}`;
 
   return (
@@ -183,18 +188,27 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
               {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
           </label>
+          <label className={lab}>{isPanel ? 'Width' : 'Width (optional)'}
+            <input value={type.w ?? ''} placeholder={isPanel ? '' : 'keep the row width'} onChange={e => patchType(t => ({ ...t, w: e.target.value }))}
+              onBlur={() => patchType(t => { const n = parseDim(t.w ?? ''); const next = { ...t }; if (isNaN(n) || n <= 0) { if (isPanel) next.w = '3'; else delete next.w; } else next.w = fmt(n); return next; })}
+              className={`${inp} text-center`} aria-label="Default width" />
+          </label>
           <label className={lab}>Height
             <input value={type.h} onChange={e => patchType(t => ({ ...t, h: e.target.value }))} onBlur={dimBlur('h')} className={`${inp} text-center`} aria-label="Default height" />
           </label>
-          <label className={lab}>Depth
-            <input value={type.d} onChange={e => patchType(t => ({ ...t, d: e.target.value }))} onBlur={dimBlur('d')} className={`${inp} text-center`} aria-label="Default depth" />
-          </label>
-          <label className={lab}>Toe
-            <input value={type.toe} onChange={e => patchType(t => ({ ...t, toe: e.target.value }))} onBlur={dimBlur('toe')} className={`${inp} text-center`} aria-label="Default toe" />
-          </label>
+          {!isPanel && (
+            <label className={lab}>Depth
+              <input value={type.d} onChange={e => patchType(t => ({ ...t, d: e.target.value }))} onBlur={dimBlur('d')} className={`${inp} text-center`} aria-label="Default depth" />
+            </label>
+          )}
+          {!isPanel && (
+            <label className={lab}>Toe
+              <input value={type.toe} onChange={e => patchType(t => ({ ...t, toe: e.target.value }))} onBlur={dimBlur('toe')} className={`${inp} text-center`} aria-label="Default toe" />
+            </label>
+          )}
           <label className={`${lab} col-span-2`}>Picker image
             <select value={type.img} onChange={e => patchType(t => ({ ...t, img: e.target.value }))} className={inp}>
-              <option value="">Drawn from the faces</option>
+              <option value="">{isPanel ? 'Drawn as a panel' : 'Drawn from the faces'}</option>
               {type.img && !skuImages.includes(type.img) && <option value={type.img}>{type.img}</option>}
               {skuImages.map(src => <option key={src} value={src}>{src.replace(/^.*\//, '')}</option>)}
             </select>
@@ -204,9 +218,36 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
         <div className="text-xs text-muted">Renaming a code does not update cabinets already saved with the old code; they keep it and show a warning.</div>
       </Card>
 
-      <Card title="Standard faces" sub="What a new cabinet of this box starts with · the same window as a job's Configure tab">
-        <BoxFaces key={type.code} type={type} d={d} catalog={cfg.catalog} onFaces={faces => patchType(t => ({ ...t, faces }))} />
-      </Card>
+      {isPanel ? (
+        <Card title="Panel" sub="An accessory is one cut panel: no case, faces or hardware. Width and height are entered per row.">
+          <div className="grid items-start gap-6" style={{ gridTemplateColumns: 'minmax(160px,1fr) minmax(260px,2fr)' }}>
+            <Elevation cab={sampleCabinet(type, d, cfg.catalog)} className="block max-h-[240px] w-full" title={`Preview of ${type.code}`} />
+            <div className="grid gap-x-3.5 gap-y-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))' }}>
+              <label className={lab}>Cut from
+                <select value={panelSpec.mat} onChange={e => setPanel({ mat: e.target.value as PanelSpec['mat'] })} className={inp} aria-label="Panel material">
+                  {MAT_SLOTS.map(([k, l]) => <option key={k} value={k}>{l.replace(' material', '')} material of the job</option>)}
+                </select>
+              </label>
+              <label className={lab}>Grain
+                <select value={panelSpec.grain} onChange={e => setPanel({ grain: e.target.value as Grain })} className={inp} aria-label="Panel grain">
+                  <option value="Vertical">Vertical (along height)</option>
+                  <option value="Horizontal">Horizontal (along width)</option>
+                </select>
+              </label>
+              <label className={lab}>Edge banding
+                <select value={panelSpec.band} onChange={e => setPanel({ band: e.target.value as PanelSpec['band'] })} className={inp} aria-label="Panel edge banding">
+                  {PANEL_BANDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </label>
+              <div className="col-span-full text-xs text-muted">Fillers and end panels usually band the exposed long edge; toe kick skins run horizontal with no banding.</div>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card title="Standard faces" sub="What a new cabinet of this box starts with · the same window as a job's Configure tab">
+          <BoxFaces key={type.code} type={type} d={d} catalog={cfg.catalog} onFaces={faces => patchType(t => ({ ...t, faces }))} />
+        </Card>
+      )}
       </>)}
     </div>
   );

@@ -1,5 +1,5 @@
 'use client';
-import { categoryLabel, parseDim, typeFor, typesIn, type BuiltCabinet, type CabCatalog, type CabInput, type Fmt, type Resolved } from '@/lib/engine';
+import { categoryFor, categoryLabel, parseDim, typeFor, typesIn, type BuiltCabinet, type CabCatalog, type CabInput, type Fmt, type Resolved } from '@/lib/engine';
 import { TypeThumb } from './Elevation';
 
 const COLS = '28px minmax(84px,0.9fr) minmax(120px,1.5fr) repeat(4,minmax(58px,1fr)) 28px';
@@ -44,6 +44,7 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
       {cabs.map((c, i) => {
         const b = built[i];
         const t = typeFor(catalog, c.type);
+        const panel = categoryFor(catalog, t?.cat)?.style === 'panel';
         const picking = pickId === c.id;
         const boxes = typesIn(catalog, t?.cat);
         const fronts = b.bad ? '' : ' · ' + b.fronts.map(fr => `${fr.qty > 1 ? fr.qty + '× ' : ''}${fr.desc} ${f(fr.w)} x ${f(fr.l)}`).join(', ');
@@ -62,8 +63,8 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
             </button>
             <input value={c.w} onChange={e => onUpdate(c.id, { w: e.target.value })} onBlur={blur(c.id, 'w')} className={`${dimInput} ${bad(c.w) ? 'field-bad' : ''}`} aria-label="Width" />
             <input value={c.h} onChange={e => onUpdate(c.id, { h: e.target.value })} onBlur={blur(c.id, 'h')} className={`${dimInput} ${bad(c.h) ? 'field-bad' : ''}`} aria-label="Height" />
-            <input value={c.d} onChange={e => onUpdate(c.id, { d: e.target.value })} onBlur={blur(c.id, 'd')} className={`${dimInput} ${bad(c.d) ? 'field-bad' : ''}`} aria-label="Depth" />
-            <input value={c.toe} onChange={e => onUpdate(c.id, { toe: e.target.value })} onBlur={blur(c.id, 'toe')} className={dimInput} aria-label="Toe" />
+            {panel ? <div className="text-center text-xs text-faint">—</div> : <input value={c.d} onChange={e => onUpdate(c.id, { d: e.target.value })} onBlur={blur(c.id, 'd')} className={`${dimInput} ${bad(c.d) ? 'field-bad' : ''}`} aria-label="Depth" />}
+            {panel ? <div className="text-center text-xs text-faint">—</div> : <input value={c.toe} onChange={e => onUpdate(c.id, { toe: e.target.value })} onBlur={blur(c.id, 'toe')} className={dimInput} aria-label="Toe" />}
             <button onClick={() => onRemove(c.id)} title="Remove" className="h-8 w-7 rounded-md border-none bg-transparent text-lg text-faint hover:bg-canvas hover:text-danger">×</button>
             {picking && (
               <div className="col-span-full flex flex-col gap-2 rounded-lg border border-line bg-canvas p-2.5">
@@ -86,10 +87,10 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
             )}
             <div className="-mt-0.5 flex items-start gap-2.5" style={{ gridColumn: '2 / -1' }}>
               <div className="min-w-0 flex-1 text-xs text-pretty text-muted">
-                {b.code} — {b.bad ? 'enter width, height and depth' : `${f(b.W)} x ${f(b.H)} x ${f(b.D)}`}{b.qty > 1 ? ` · ×${b.qty} (saved before one-per-row entry)` : ''}{fronts}
+                {b.code} — {b.bad ? (panel ? 'enter width and height' : 'enter width, height and depth') : panel ? `${f(b.W)} x ${f(b.H)} panel` : `${f(b.W)} x ${f(b.H)} x ${f(b.D)}`}{b.qty > 1 ? ` · ×${b.qty} (saved before one-per-row entry)` : ''}{fronts}
               </div>
               <button onClick={() => onDuplicate(c.id)} title="Add a copy of this cabinet below" className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Duplicate</button>
-              <button onClick={() => onConfigure(c.id)} className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Configure</button>
+              {!panel && <button onClick={() => onConfigure(c.id)} className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Configure</button>}
             </div>
           </div>
         );
