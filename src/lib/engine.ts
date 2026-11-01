@@ -222,7 +222,7 @@ export const typesIn = (catalog: CabCatalog, key: string | undefined) => catalog
 export const DEFAULTS = {
   caseThk: 0.75, backThk: 0.25, backGroove: 0.375, backInset: 0.75, stretcherW: 4, toeRecess: 3,
   frontGap: 0.125, sideReveal: 0.0625, topReveal: 0.0625, bottomReveal: 0.125,
-  smallFront: 6.1875, boxDeduct: 1.9375, smallBoxH: 4, bigBoxH: 8, xlBoxH: 10,
+  smallFront: 6.1875, glideClear: 0.4375, smallBoxH: 4, bigBoxH: 8, xlBoxH: 10,
   rolloutH: 3.5, rolloutSpacer: 1,
   glideSeries: '563H', glideLens: '9, 12, 15, 18, 21', glideDeduct: 3,
   kerf: 0.187, sheetL: 97, sheetW: 49, edgeTrim: 0.25,
@@ -238,12 +238,24 @@ export type RawDefaults = Partial<Record<DefaultKey, string>>;
 export const RULE_FIELDS: [DefaultKey, string][] = [
   ['backGroove', 'Back groove depth'], ['backInset', 'Back inset from rear edge'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'],
   ['frontGap', 'Gap between fronts'], ['sideReveal', 'Side reveal (each)'], ['topReveal', 'Top reveal'], ['bottomReveal', 'Bottom reveal'],
-  ['smallFront', 'Top drawer front height'], ['boxDeduct', 'Drawer box width deduct'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
+  ['smallFront', 'Top drawer front height'], ['glideClear', 'Drawer guide clearance (both sides)'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
   ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
   ['glideDeduct', 'Glide deduct from depth'], ['doorSplit', 'Two doors above width'], ['tallLowerDoor', 'Tall lower door height'],
   ['shelfSetback', 'Shelf setback'],
 ];
 export const RULE_KEYS = new Set<DefaultKey>(RULE_FIELDS.map(f => f[0]));
+
+/**
+ * Rules saved under an older key. `boxDeduct` was the whole deduct from the cabinet's inside width to the drawer box,
+ * case sides included; `glideClear` is just the guides' clearance, so the old value less two case thicknesses.
+ */
+export function migrateRules(defaults: Record<string, string>, caseThk: number = DEFAULTS.caseThk): void {
+  if ('boxDeduct' in defaults) {
+    const old = parseDim(defaults.boxDeduct);
+    if (!('glideClear' in defaults) && !isNaN(old) && old - 2 * caseThk > 0) defaults.glideClear = fmt(old - 2 * caseThk);
+    delete defaults.boxDeduct;
+  }
+}
 /** Shop-wide panel saw settings. */
 export const SAW_FIELDS: [DefaultKey, string][] = [['kerf', 'Kerf'], ['edgeTrim', 'Edge trim (1 long + 1 short edge)']];
 /** Hardware picked per job. */
@@ -482,7 +494,8 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
     if (s.kind === 'drawer') {
       const openW = (inW - (n - 1) * thk) / n;
       const bh = h < 7 ? d.smallBoxH : h < 10 ? Math.min(6, d.bigBoxH) : h < 13 ? d.bigBoxH : d.xlBoxH;
-      out.drawers.push({ qty: n, kind: 'Drawer', w: openW - (d.boxDeduct - 2 * thk), dp: glide, h: bh, sec: tag });
+      // Box width: the opening between case sides (or partitions) less the guides' side-to-side clearance.
+      out.drawers.push({ qty: n, kind: 'Drawer', w: openW - d.glideClear, dp: glide, h: bh, sec: tag });
       if (n > 1) partitions.push({ qty: n - 1, l: h + gap });
       drawerPulls += n; drawerCount += n;
     }
@@ -491,7 +504,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
       shelves += sec.shelves;
       if (sec.rollouts) {
         const nSp = +sec.spacerL + +sec.spacerR;
-        out.drawers.push({ qty: sec.rollouts, kind: 'Roll-out', w: inW - nSp * d.rolloutSpacer - (d.boxDeduct - 2 * thk), dp: glide, h: d.rolloutH, sec: tag });
+        out.drawers.push({ qty: sec.rollouts, kind: 'Roll-out', w: inW - nSp * d.rolloutSpacer - d.glideClear, dp: glide, h: d.rolloutH, sec: tag });
         rollouts += sec.rollouts; spacers += sec.rollouts * nSp;
       }
     }

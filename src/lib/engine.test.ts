@@ -36,6 +36,13 @@ describe('3DB15 sample packet', () => {
     expect(part('Drawer Stretcher').qty).toBe(1);
   });
 
+  it('drawer box width is the opening less the guide clearance; a wider clearance narrows the box', () => {
+    // 13 1/2 opening − 7/16 = 13 1/16 by default (the old 1 15/16 deduct less two 3/4 sides).
+    expect(fmt(job.drawers[0].w)).toBe('13 1/16');
+    const wide = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], { glideClear: '1/2' });
+    expect(fmt(wide.drawers[0].w)).toBe('13');
+  });
+
   it('matches the drawer fronts in the PDF', () => {
     expect(cab.fronts.map(f => [fmt(f.w), fmt(f.l)])).toEqual([
       ['14 7/8', '6 3/16'], ['14 7/8', '11 11/16'], ['14 7/8', '11 11/16'],

@@ -2,7 +2,7 @@
 // hardware, the panel saw settings and the construction methods. Stored as one JSON document in SQLite.
 import {
   AUTO_SIZED, BAND_EDGES, BOX_FIELD, BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, DEFAULT_PANEL, DIM_TOKENS, FACE_H_RULES, HARDWARE_FIELDS, MAT_SLOTS, PANEL_BANDS, QTY_RE, RULE_KEYS, SAW_FIELDS, SINK_SKIRT, STANDARD_PARTS,
-  addCasePart, defaultCaseParts, evalDim, fmt, newFace, parseDim, sinkBaseParts,
+  addCasePart, defaultCaseParts, evalDim, fmt, migrateRules, newFace, parseDim, sinkBaseParts,
   type BandEdge, type BuildStyle, type CabCatalog, type CabCategory, type CabType, type CasePart, type CaseSpec, type DefaultKey, type FaceSpec, type FrontStyle, type Hinge, type JobMaterials, type Kind, type Material, type MatSlot, type PanelSpec, type RawDefaults,
 } from './engine';
 import { OPTIONS, PRESETS, type Preset } from './presets';
@@ -143,10 +143,12 @@ function normValues(raw: unknown): RawDefaults {
   if (!raw || typeof raw !== 'object') return out;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     // Only construction rules belong to a method; material, hardware and sheet keys from older documents are dropped.
-    if (!RULE_KEYS.has(k as DefaultKey)) continue;
+    if (!RULE_KEYS.has(k as DefaultKey) && k !== 'boxDeduct') continue;
     const s = str(v).trim();
     if (s) (out as Record<string, string>)[k] = s;
   }
+  // A method has no materials, so an old drawer box width deduct converts with the default case thickness.
+  migrateRules(out as Record<string, string>);
   return out;
 }
 

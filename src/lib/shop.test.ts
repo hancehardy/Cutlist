@@ -89,6 +89,14 @@ describe('jobs on shop settings', () => {
     expect(presetFor('gone', shop.presets)).toBe(thin);
     expect(normalizeJobDoc({ cabs: [], method: 'thin' }, shop).method).toBe('thin');
     expect(normalizeJobDoc({ cabs: [], method: 'gone' }, shop).method).toBe('thin');
+    // The old drawer box width deduct becomes the guide clearance: less two case thicknesses of this job's case material.
+    expect(normalizeJobDoc({ cabs: [], defaults: { boxDeduct: '2' } }, shop).defaults).toEqual({ glideClear: '1/2' });
+    const thinCase = { ...normalizeJobDoc({ cabs: [] }, shop).materials, case: { name: 'Thin', thk: '1/2', w: '49', l: '97' } };
+    expect(normalizeJobDoc({ cabs: [], defaults: { boxDeduct: '1 15/16' }, materials: thinCase }, shop).defaults).toEqual({ glideClear: '15/16' });
+    expect(normalizeJobDoc({ cabs: [], defaults: { boxDeduct: '2', glideClear: '3/8' } }, shop).defaults).toEqual({ glideClear: '3/8' });
+    expect(normalizeJobDoc({ cabs: [], defaults: { boxDeduct: '1' } }, shop).defaults).toEqual({});
+    // A method's rules convert with the default 3/4 case.
+    expect(normalizeShopConfig({ presets: [{ key: 'x', label: 'X', values: { boxDeduct: '1 15/16', stretcherW: '3' } }] }).presets[0].values).toEqual({ glideClear: '7/16', stretcherW: '3' });
     // Edge banding: a name as typed and flat or 1 mm; missing or odd values fall back.
     expect(normalizeJobDoc({ cabs: [] }, shop).banding).toEqual({ case: { name: '', thk: 'flat' }, front: { name: '', thk: 'flat' } });
     expect(normalizeJobDoc({ cabs: [], banding: { case: { name: ' White PVC ', thk: '1mm' }, front: { name: 'Maple', thk: '2mm' } } }, shop).banding)

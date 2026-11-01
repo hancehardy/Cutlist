@@ -1,5 +1,5 @@
 import type { Banding, CabInput, DimFormat, FrontStyle, JobBanding, JobFronts, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
-import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, defaultBanding, fmt } from './engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, defaultBanding, fmt, migrateRules, parseDim } from './engine';
 import { PRESETS } from './presets';
 import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial, normStyle, styleByName } from './shop';
 
@@ -132,12 +132,11 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
   const j = (r.job && typeof r.job === 'object' ? r.job : {}) as Record<string, unknown>;
   if (!Array.isArray(r.cabs)) throw new Error('Job file has no cabinet list.');
   const defaults: RawDefaults = {};
-  if (r.defaults && typeof r.defaults === 'object') {
-    for (const [k, v] of Object.entries(r.defaults as Record<string, unknown>)) {
-      // Rules the app no longer has (such as the old wall top height) are dropped.
-      if (!(k in DEFAULTS)) continue;
-      if (typeof v === 'string' || typeof v === 'number') (defaults as Record<string, string>)[k] = String(v);
-    }
+  const rawDefaults = (r.defaults && typeof r.defaults === 'object' ? r.defaults : {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(rawDefaults)) {
+    // Rules the app no longer has (such as the old wall top height) are dropped; renamed ones are converted below.
+    if (!(k in DEFAULTS) && k !== 'boxDeduct') continue;
+    if (typeof v === 'string' || typeof v === 'number') (defaults as Record<string, string>)[k] = String(v);
   }
   // Materials: the job's own copies, or built from the old material/thickness/sheet rules.
   let materials: JobMaterials | null = null;
@@ -148,6 +147,8 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     if (c && b && f) materials = { case: c, back: b, front: f, toe: normMaterial(m.toe) ?? { ...b } };
   }
   if (!materials) materials = migrateMaterials(defaults, shop);
+  // The old drawer box width deduct included the case sides; the clearance is what is left after this job's case thickness.
+  migrateRules(defaults as Record<string, string>, parseDim(materials.case.thk) > 0 ? parseDim(materials.case.thk) : DEFAULTS.caseThk);
   let fronts: JobFronts | null = null;
   if (r.fronts && typeof r.fronts === 'object') {
     const o = r.fronts as Record<string, unknown>;

@@ -81,7 +81,7 @@ export function DrawerListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
           { v: row.kind }, { v: row.qty, c: 'font-bold' }, { v: row.wTxt, c: 'font-semibold' }, { v: row.dTxt, c: 'font-semibold' },
           { v: row.hTxt, c: 'font-semibold' }, { v: row.cabsTxt, c: 'text-ink-3' },
         ] }))} />
-      <div className="mt-2.5 text-xs text-muted">Box width = cabinet width − {f(r.d.boxDeduct)}. Depth = longest {r.d.glideSeries} glide that fits cabinet depth − {f(r.d.glideDeduct)}.</div>
+      <div className="mt-2.5 text-xs text-muted">Box width = opening between the case sides − {f(r.d.glideClear)} guide clearance. Depth = longest {r.d.glideSeries} glide that fits cabinet depth − {f(r.d.glideDeduct)}.</div>
       <Footer>{footerTxt}</Footer>
     </Card>
   );
