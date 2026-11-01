@@ -238,12 +238,29 @@ describe('accessory migration', () => {
   it('adds the Accessory panels once to a shop saved before version 3, and not again after', () => {
     const old = { version: 2, catalog: { categories: [{ key: 'base', label: 'Base', style: 'base' }], types: [{ code: 'B', cat: 'base', faces: [{ kind: 'door' }] }] } };
     const c = normalizeShopConfig(old);
-    expect(c.version).toBe(3);
+    expect(c.version).toBe(4);
     expect(c.catalog.categories.map(x => [x.key, x.style])).toEqual([['base', 'base'], ['accessory', 'panel']]);
     expect(c.catalog.types.map(t => t.code)).toEqual(['B', 'FIL', 'EP', 'TK']);
     // The admin removes them; a version-3 document stays as saved.
     const trimmed = normalizeShopConfig({ ...c, catalog: { categories: [c.catalog.categories[0]], types: [c.catalog.types[0]] } });
     expect(trimmed.catalog.categories.map(x => x.key)).toEqual(['base']);
     expect(trimmed.catalog.types.map(t => t.code)).toEqual(['B']);
+  });
+});
+
+describe('toe kick material migration', () => {
+  it('moves a toe kick panel saved before version 4 from the front material to the toe kick material, once', () => {
+    const cats = [{ key: 'accessory', label: 'Accessory', style: 'panel' }];
+    const types = [
+      { code: 'TK', cat: 'accessory', label: 'Toe kick skin', faces: [], panel: { mat: 'front', grain: 'Horizontal', band: 'none' } },
+      { code: 'KICK', cat: 'accessory', label: 'Toe Kick (tall)', faces: [], panel: { mat: 'front', grain: 'Horizontal', band: 'none' } },
+      { code: 'FIL', cat: 'accessory', label: 'Filler', faces: [], panel: { mat: 'front', grain: 'Vertical', band: 'all' } },
+    ];
+    const c = normalizeShopConfig({ version: 3, catalog: { categories: cats, types } });
+    expect(c.version).toBe(4);
+    expect(c.catalog.types.map(t => [t.code, t.panel?.mat])).toEqual([['TK', 'toe'], ['KICK', 'toe'], ['FIL', 'front']]);
+    // A version-4 document is the admin's to decide: a toe kick deliberately cut from the front material stays.
+    const kept = normalizeShopConfig({ version: 4, catalog: { categories: cats, types } });
+    expect(kept.catalog.types[0].panel?.mat).toBe('front');
   });
 });

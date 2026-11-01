@@ -25,7 +25,7 @@ export interface SawSettings { kerf: string; edgeTrim: string }
 
 /** Bump `version` when a migration must run once on stored documents (see normalizeShopConfig). */
 export interface ShopConfig {
-  version: 3;
+  version: 4;
   /** Sheet goods in display order. */
   materials: Material[];
   /** Dropdown choices per hardware field, in display order. An empty list turns the field into free text. */
@@ -57,7 +57,7 @@ export const BUILTIN_MATERIALS: Material[] = [
 /** The built-in materials, choices, saw settings and method the app ships with. */
 export function defaultShopConfig(): ShopConfig {
   return {
-    version: 3,
+    version: 4,
     materials: BUILTIN_MATERIALS.map(m => ({ ...m })),
     options: Object.fromEntries(OPTION_KEYS.map(k => [k, [...OPTIONS[k]!]])),
     doorStyles: BUILTIN_DOOR_STYLES.map(s => ({ ...s })),
@@ -277,9 +277,10 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
     }
   }
   const catalog = normalizeCatalog(r.catalog);
+  const version = Number(r.version) || 1;
   // Version 3 added accessories (cut panels). A shop saved before then gets the built-in Accessory category and
   // its panels once; after that the admin owns the list, so deleting them does not bring them back.
-  if ((Number(r.version) || 1) < 3 && !catalog.categories.some(c => c.style === 'panel')) {
+  if (version < 3 && !catalog.categories.some(c => c.style === 'panel')) {
     const acc = BUILTIN_CATALOG.categories.find(c => c.style === 'panel')!;
     const key = presetKey(acc.key, catalog.categories.map(c => c.key));
     catalog.categories.push({ ...acc, key });
@@ -287,8 +288,15 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
       if (!catalog.types.some(x => x.code === t.code)) catalog.types.push({ ...t, cat: key, faces: [], panel: { ...t.panel! } });
     }
   }
+  // Version 4 added the toe kick material. A toe kick panel saved before then was cutting from the front material by
+  // default; move it onto the toe kick material once.
+  if (version < 4) {
+    for (const t of catalog.types) {
+      if (t.panel && t.panel.mat === 'front' && (t.code === 'TK' || /toe\s*kick/i.test(t.label))) t.panel = { ...t.panel, mat: 'toe' };
+    }
+  }
   return {
-    version: 3, materials: materials.length ? materials : builtin.materials, options, saw,
+    version: 4, materials: materials.length ? materials : builtin.materials, options, saw,
     doorStyles: normStyles(r.doorStyles, normList(rawOpts.doorStyle), builtin.doorStyles),
     drawerFrontStyles: normStyles(r.drawerFrontStyles, normList(rawOpts.doorStyle), builtin.drawerFrontStyles),
     presets: presets.length ? presets : builtin.presets,
