@@ -149,7 +149,7 @@ export function JobSetup({ job, method, defaults, materials, banding, fronts, f,
       <Section step={3} title="Materials" sub="Thickness and sheet size come with each material. Choose Other… to type your own.">
         <div className="grid gap-x-3.5 gap-y-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' }}>
           {MAT_SLOTS.map(([slot, lab]) => (
-            <MaterialField key={slot} label={lab} value={materials[slot]} materials={shopMaterials} onChange={m => onMaterial(slot, m)} />
+            <MaterialField key={slot} label={lab} value={materials[slot] ?? materials.case} materials={shopMaterials} onChange={m => onMaterial(slot, m)} />
           ))}
         </div>
         <div className="text-[11px] text-muted">A job has one case finish and one front finish. Cabinets that need a different finish go on a separate job.</div>

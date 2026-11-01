@@ -112,18 +112,19 @@ describe('jobs on shop settings', () => {
     expect(doc.method).toBe('thin');
     expect(doc.defaults).toMatchObject({ stretcherW: '3', pull: 'Knob', hinge: OPTIONS.hinge![0] });
     // First material for the case and fronts, thinnest for the back.
-    expect(doc.materials).toEqual({ case: M('Ply', '0.71'), back: M('Back', '1/4'), front: M('Ply', '0.71'), toe: M('Back', '1/4') });
+    expect(doc.materials).toEqual({ case: M('Ply', '0.71'), back: M('Back', '1/4'), front: M('Ply', '0.71'), toe: M('Back', '1/4'), subtop: M('Ply', '0.71'), ladder: M('Ply', '0.71') });
     expect(isCustomized(doc.method, doc.defaults, shop.presets)).toBe(false);
     expect(isCustomized(doc.method, { ...doc.defaults, stretcherW: '4' }, shop.presets)).toBe(true);
     expect(defaultJobMaterials([]).case.name).toBe('3/4 2s Melamine');
   });
 
   it('keeps a job\'s own material copies and rebuilds incomplete ones', () => {
-    const m = { case: M('X', '5/8', '48', '96'), back: M('Y', '1/8'), front: M('Z', '3/4'), toe: M('T', '1/4') };
+    const m = { case: M('X', '5/8', '48', '96'), back: M('Y', '1/8'), front: M('Z', '3/4'), toe: M('T', '1/4'), subtop: M('S', '3/4'), ladder: M('L', '3/4') };
     expect(normalizeJobDoc({ cabs: [], materials: m }, shop).materials).toEqual(m);
-    // A job saved before the toe kick material existed uses its back material for it.
-    const { toe: _t, ...three } = m; void _t;
-    expect(normalizeJobDoc({ cabs: [], materials: three }, shop).materials.toe).toEqual(m.back);
+    // A job saved before the toe kick material existed uses its back material for it; before the subtop and ladder pack, its case material.
+    const { toe: _t, subtop: _s, ladder: _l, ...three } = m; void _t; void _s; void _l;
+    const old = normalizeJobDoc({ cabs: [], materials: three }, shop).materials;
+    expect([old.toe, old.subtop, old.ladder]).toEqual([m.back, m.case, m.case]);
     expect(normalizeJobDoc({ cabs: [], materials: { case: m.case } }, shop).materials.case.name).toBe('3/4 2s Melamine');
   });
 
@@ -136,6 +137,8 @@ describe('jobs on shop settings', () => {
       back: M('1/4 1s Melamine', '1/4', '49', '120'),
       front: M('New', '0.71', '49', '120'),
       toe: M('1/4 1s Melamine', '1/4', '49', '120'),
+      subtop: M('Ply', '0.71', '49', '120'),
+      ladder: M('Ply', '0.71', '49', '120'),
     });
     // Material, sheet and saw keys leave the job's rules; hardware and real rules stay.
     expect(doc.defaults).toEqual({ pull: 'Knob', stretcherW: '3' });

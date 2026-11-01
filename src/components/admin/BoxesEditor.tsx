@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   AUTO_QTY_PARTS, AUTO_SIZED, BAND_EDGES, BUILD_STYLES, DEFAULT_PANEL, DIM_TOKENS, MAT_SLOTS, PANEL_BANDS, QTY_RE, SINK_SKIRT, STANDARD_PARTS,
-  addCasePart, buildCabinet, caseDims, defaultCaseParts, evalDim, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, typesIn,
+  addCasePart, buildCabinet, caseDims, defaultCaseParts, evalDim, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, slotMaterial, typesIn,
   type BandEdge, type CabCatalog, type CabCategory, type CabType, type CasePart, type FaceSpec, type Grain, type MatSlot, type PanelSpec, type Resolved, type SectionInput,
 } from '@/lib/engine';
 import { presetKey, type ShopConfig } from '@/lib/shop';
@@ -182,7 +182,6 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
   // What the case comes out as at the preview size, so the admin sees each part and anything that could not be sized.
   const preview = type && !isPanel ? sampleCabinet(type, d, cfg.catalog) : null;
   const previewDims = preview && !preview.bad ? caseDims(preview, d) : null;
-  const matName = (m: MatSlot) => (m === 'back' ? d.backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : d.caseMat);
   const panelSpec: PanelSpec = type?.panel ?? DEFAULT_PANEL;
   const setPanel = (patch: Partial<PanelSpec>) => patchType(t => ({ ...t, panel: { ...(t.panel ?? DEFAULT_PANEL), ...patch } }));
   const tile = (on: boolean) => `flex flex-col gap-1 rounded-lg px-3 py-2.5 text-left text-ink hover:border-ink ${on ? 'border-2 border-accent bg-sel' : 'border border-line bg-white'}`;

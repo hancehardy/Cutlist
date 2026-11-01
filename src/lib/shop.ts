@@ -87,7 +87,7 @@ export function defaultJobMaterials(materials: Material[]): JobMaterials {
   const list = materials.length ? materials : BUILTIN_MATERIALS;
   const first = list[0];
   const thin = list.reduce((a, m) => (parseDim(m.thk) < parseDim(a.thk) ? m : a), first);
-  return { case: { ...first }, back: { ...thin }, front: { ...first }, toe: { ...thin } };
+  return { case: { ...first }, back: { ...thin }, front: { ...first }, toe: { ...thin }, subtop: { ...first }, ladder: { ...first } };
 }
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
