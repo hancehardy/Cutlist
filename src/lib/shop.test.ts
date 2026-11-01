@@ -89,6 +89,11 @@ describe('jobs on shop settings', () => {
     expect(presetFor('gone', shop.presets)).toBe(thin);
     expect(normalizeJobDoc({ cabs: [], method: 'thin' }, shop).method).toBe('thin');
     expect(normalizeJobDoc({ cabs: [], method: 'gone' }, shop).method).toBe('thin');
+    // Edge banding: a name as typed and flat or 1 mm; missing or odd values fall back.
+    expect(normalizeJobDoc({ cabs: [] }, shop).banding).toEqual({ case: { name: '', thk: 'flat' }, front: { name: '', thk: 'flat' } });
+    expect(normalizeJobDoc({ cabs: [], banding: { case: { name: ' White PVC ', thk: '1mm' }, front: { name: 'Maple', thk: '2mm' } } }, shop).banding)
+      .toEqual({ case: { name: 'White PVC', thk: '1mm' }, front: { name: 'Maple', thk: 'flat' } });
+    expect(emptyJob(shop).banding).toEqual({ case: { name: '', thk: 'flat' }, front: { name: '', thk: 'flat' } });
     // A cabinet keeps its finished-interior flag; anything else is dropped.
     const cabs = normalizeJobDoc({ cabs: [{ type: 'B', w: '30', finished: true }, { type: 'B', w: '30', finished: 'yes' }, { type: 'B', w: '30' }] }, shop).cabs;
     expect(cabs.map(c => c.finished)).toEqual([true, undefined, undefined]);

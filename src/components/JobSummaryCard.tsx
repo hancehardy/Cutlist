@@ -1,12 +1,13 @@
 'use client';
-import type { RawDefaults, Resolved } from '@/lib/engine';
+import { bandThkLabel, type JobBanding, type RawDefaults, type Resolved } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 
-interface Props { job: JobInfo; method: string; defaults: RawDefaults; presets: Preset[]; d: Resolved; onEdit?: () => void }
+interface Props { job: JobInfo; method: string; defaults: RawDefaults; presets: Preset[]; d: Resolved; banding: JobBanding; onEdit?: () => void }
 
 /** Compact job + construction card at the top of the item entry page. */
-export function JobSummaryCard({ job, method, defaults, presets, d, onEdit }: Props) {
+export function JobSummaryCard({ job, method, defaults, presets, d, banding, onEdit }: Props) {
+  const bandTxt = (b: JobBanding['case']) => `${b.name || 'not named'} (${bandThkLabel(b.thk)})`;
   const meta = [job.client, job.catalog, job.drawn && `Drawn by ${job.drawn}`].filter(Boolean).join(' · ');
   const custom = isCustomized(method, defaults, presets);
   return (
@@ -21,6 +22,7 @@ export function JobSummaryCard({ job, method, defaults, presets, d, onEdit }: Pr
           <span className="eyebrow mr-2 text-[10px]">{presetFor(method, presets).label}{custom ? ' · customized' : ''}</span>
         </div>
         <div>Case {d.caseMat} · Back {d.backMat} · Fronts {d.frontMat} · Toe kick {d.toeMat}</div>
+        <div>Edge banding · case {bandTxt(banding.case)} · fronts {bandTxt(banding.front)}</div>
         <div>
           Doors {d.doorStyle}{d.fronts.doorSlab ? '' : ' (ordered)'} · Drawer fronts {d.fronts.drawerFrontStyle}{d.fronts.drawerGrain === 'Horizontal' ? ', horizontal grain' : ''}{d.fronts.drawerSlab ? '' : ' (ordered)'} · {d.drawerStyle} boxes
         </div>

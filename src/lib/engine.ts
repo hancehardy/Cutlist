@@ -261,6 +261,16 @@ export const MAT_SLOTS: [MatSlot, string][] = [['case', 'Case material'], ['back
 /** The materials a job is built from: thickness drives the case and back rules, sheet size drives the saw plan. */
 export type JobMaterials = Record<MatSlot, Material>;
 
+/** Edge banding thickness: flat tape or 1 mm. */
+export type BandThk = 'flat' | '1mm';
+export const BAND_THKS: [BandThk, string][] = [['flat', 'Flat'], ['1mm', '1 mm']];
+export const bandThkLabel = (t: BandThk) => BAND_THKS.find(([k]) => k === t)?.[1] ?? t;
+/** An edge banding product as named by the shop, and its thickness. */
+export interface Banding { name: string; thk: BandThk }
+/** The edge banding a job uses: one on case parts, one on doors and drawer fronts. */
+export interface JobBanding { case: Banding; front: Banding }
+export const defaultBanding = (): JobBanding => ({ case: { name: '', thk: 'flat' }, front: { name: '', thk: 'flat' } });
+
 /** A door or drawer front style. Slab styles are cut in the shop; any other is ordered and only listed on the door list. Grain applies to drawer and false fronts. */
 export interface FrontStyle { name: string; slab: boolean; grain: Grain }
 export interface JobFronts { door: FrontStyle; drawer: FrontStyle }
@@ -581,6 +591,8 @@ export function sheetTotals(plans: SawPlan[], groups: MaterialGroup[] = []): She
 export interface JobResult {
   d: Resolved; cabs: BuiltCabinet[]; materials: MaterialGroup[]; doors: DoorRow[]; drawers: DrawerRow[];
   hardware: HardwareItem[]; sawPlans: SawPlan[];
+  /** Estimated lineal feet of edge banding, case parts apart from doors and drawer fronts (cut slab fronts only). */
+  bandLf: { case: number; front: number };
   summary: { nParts: number; nFronts: number; nDrawers: number; sheets: number };
 }
 
@@ -592,10 +604,12 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
   const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f, catalog));
   const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number>; band: number }> = {};
   const key = (p: Part) => `${p.desc}|${p.w}|${p.l}|${p.grain}`;
+  const bandIn = { case: 0, front: 0 };
   for (const cb of built) {
     if (cb.bad) continue;
     for (const p of [...cb.parts, ...cb.fronts]) {
       if (!p.cut) continue;
+      bandIn[cb.parts.includes(p) ? 'case' : 'front'] += p.qty * cb.qty * p.band;
       const m = byMat[p.mat] || (byMat[p.mat] = { name: p.mat, rows: {}, rips: {}, band: 0 });
       const k = key(p), q = p.qty * cb.qty;
       const r = m.rows[k] || (m.rows[k] = { desc: p.desc, w: p.w, l: p.l, grain: p.grain, qty: 0, cabs: [] });
@@ -641,7 +655,7 @@ export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mod
   const sawPlans = materials.map(m => sawPlan(m, built, d, f));
   const nFronts = doors.reduce((s, r) => s + r.qty, 0), nDrawers = drawers.reduce((s, r) => s + r.qty, 0);
   const nParts = materials.reduce((s, m) => s + m.rows.reduce((t, r) => t + r.qty, 0), 0);
-  return { d, cabs: built, materials, doors, drawers, hardware, sawPlans, summary: { nParts, nFronts, nDrawers, sheets: sawPlans.reduce((s, n) => s + n.sheets.length, 0) } };
+  return { d, cabs: built, materials, doors, drawers, hardware, sawPlans, bandLf: { case: bandIn.case / 12, front: bandIn.front / 12 }, summary: { nParts, nFronts, nDrawers, sheets: sawPlans.reduce((s, n) => s + n.sheets.length, 0) } };
 }
 
 // Panel saw optimizer (two-stage guillotine). Each sheet is trimmed on one long and one short

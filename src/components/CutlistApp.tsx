@@ -106,7 +106,7 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user, initialOrder 
   };
 
   const headerTxt = `Created for ${job.client} | ${job.name} | ${job.catalog} · ${today}`;
-  const ctx: ReportCtx = { r: result, f, job, today, headerTxt, footerTxt: `Shop packet for mill — not a Cabinet Vision file. Confirm banding. ${job.name}` };
+  const ctx: ReportCtx = { r: result, f, job, banding: doc.banding, today, headerTxt, footerTxt: `Shop packet for mill — not a Cabinet Vision file. Confirm banding. ${job.name}` };
   const show = (t: Tab) => (t === 'config' ? !printing && tab === 'config' : printing ? printSel.includes(t) : tab === t);
   const print = (keys: Tab[]) => { setPrintSel(keys); setPrinting(true); setTimeout(() => window.print(), 150); };
   const s = result.summary;
@@ -125,12 +125,13 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user, initialOrder 
     return (
       <div className="box-border flex min-h-screen flex-col gap-5 p-5">
         <div className="mx-auto w-full max-w-[880px]">{topBar}</div>
-        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} materials={doc.materials} fronts={doc.fronts} f={f}
+        <JobSetup existing={doc.setupDone} job={job} method={doc.method} defaults={doc.defaults} materials={doc.materials} banding={doc.banding} fronts={doc.fronts} f={f}
           dimFormat={doc.dimFormat} onFormat={dimFormat => setDoc(d => ({ ...d, dimFormat }))} onExport={exportJson}
           presets={shop.presets} shopMaterials={shop.materials} doorStyles={shop.doorStyles} drawerFrontStyles={shop.drawerFrontStyles} options={shop.options}
           onJob={(k: keyof JobInfo, v) => setDoc(d => ({ ...d, job: { ...d.job, [k]: v } }))}
           onDefault={(k: DefaultKey, v) => setDoc(d => ({ ...d, defaults: { ...d.defaults, [k]: v } }))}
           onMaterial={(slot, m) => setDoc(d => ({ ...d, materials: { ...d.materials, [slot]: m } }))}
+          onBanding={(slot, b) => setDoc(d => ({ ...d, banding: { ...d.banding, [slot]: b } }))}
           onFront={(slot, s) => setDoc(d => ({ ...d, fronts: { ...d.fronts, [slot]: s } }))}
           onPreset={key => setDoc(d => withRules(d, key))}
           onResetRules={() => setDoc(d => withRules(d, d.method))}
@@ -145,7 +146,7 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user, initialOrder 
       <div data-print-hide="1" className="flex max-w-[640px] min-w-0 flex-[1_1_600px] flex-col gap-4">
         {topBar}
 
-        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} presets={shop.presets} d={result.d} onEdit={locked ? undefined : () => { setView('setup'); window.scrollTo(0, 0); }} />
+        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} presets={shop.presets} d={result.d} banding={doc.banding} onEdit={locked ? undefined : () => { setView('setup'); window.scrollTo(0, 0); }} />
         <OrderBar jobId={jobId} state={order} admin={user.role === 'admin'} onChange={setOrder} />
         <div className={locked ? 'pointer-events-none opacity-60' : ''} aria-disabled={locked}>
 

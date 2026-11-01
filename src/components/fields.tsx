@@ -1,9 +1,28 @@
 'use client';
 import { useState } from 'react';
-import { parseDim, type FrontStyle, type Grain, type Material } from '@/lib/engine';
+import { BAND_THKS, parseDim, type BandThk, type Banding, type FrontStyle, type Grain, type Material } from '@/lib/engine';
 import { materialLabel, sameMaterial, sameStyle } from '@/lib/shop';
 
 const OTHER = '__other__';
+
+/** An edge banding product: its name as typed and flat or 1 mm. */
+export function BandingField({ label, value, onChange }: { label: string; value: Banding; onChange: (b: Banding) => void }) {
+  return (
+    <div className="flex flex-col gap-[3px] text-xs text-muted">
+      <label className="flex flex-col gap-[3px]">
+        {label}
+        <input value={value.name} placeholder="e.g. White PVC, Maple veneer" onChange={e => onChange({ ...value, name: e.target.value })} aria-label={label}
+          className="field px-2 py-1.5 text-[13px] text-ink" />
+      </label>
+      <label className="flex items-center gap-2 text-[11px]">
+        Thickness
+        <select value={value.thk} onChange={e => onChange({ ...value, thk: e.target.value as BandThk })} aria-label={`${label} thickness`} className="field min-w-0 flex-1 px-1.5 py-1 text-[13px] text-ink">
+          {BAND_THKS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
 
 /** Dropdown of common choices; "Other…" reveals a text box. Values outside the list open as Other. */
 export function ChoiceField({ label, value, options, onChange }: { label: string; value: string; options?: string[]; onChange: (v: string) => void }) {

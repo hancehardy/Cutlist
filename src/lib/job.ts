@@ -1,5 +1,5 @@
-import type { CabInput, DimFormat, FrontStyle, JobFronts, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
-import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, fmt } from './engine';
+import type { Banding, CabInput, DimFormat, FrontStyle, JobBanding, JobFronts, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, defaultBanding, fmt } from './engine';
 import { PRESETS } from './presets';
 import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial, normStyle, styleByName } from './shop';
 
@@ -19,6 +19,8 @@ export interface JobDoc {
   materials: JobMaterials;
   /** Copies of the door and drawer front styles; the drawer box type is `defaults.drawerStyle`. */
   fronts: JobFronts;
+  /** The edge banding on case parts and on fronts: a name as typed and flat or 1 mm. */
+  banding: JobBanding;
   /** False until the setup page's "Continue to items" is pressed; new jobs open on setup. */
   setupDone: boolean;
 }
@@ -51,6 +53,7 @@ export function sampleJob(): JobDoc {
     method: PRESETS[0].key,
     materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 }, toe: { ...MELAMINE_14 } },
     fronts: { door: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' }, drawer: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' } },
+    banding: defaultBanding(),
     setupDone: true,
   };
 }
@@ -64,6 +67,7 @@ export function emptyJob(shop: ShopConfig = defaultShopConfig()): JobDoc {
     version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults, cabs: [], dimFormat: 'fraction',
     method: preset.key, materials: defaultJobMaterials(shop.materials),
     fronts: { door: { ...(shop.doorStyles[0] ?? BUILTIN_DOOR_STYLES[0]) }, drawer: { ...(shop.drawerFrontStyles[0] ?? BUILTIN_DRAWER_FRONT_STYLES[0]) } },
+    banding: defaultBanding(),
     setupDone: false,
   };
 }
@@ -151,6 +155,12 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     if (door && drawer) fronts = { door, drawer };
   }
   if (!fronts) fronts = migrateFronts(defaults, shop);
+  const bandRaw = (r.banding && typeof r.banding === 'object' ? r.banding : {}) as Record<string, unknown>;
+  const normBanding = (v: unknown): Banding => {
+    const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+    return { name: str(o.name).trim(), thk: o.thk === '1mm' ? '1mm' : 'flat' };
+  };
+  const banding: JobBanding = { case: normBanding(bandRaw.case), front: normBanding(bandRaw.front) };
   for (const k of MOVED_KEYS) delete defaults[k];
 
   const cabs: CabInput[] = r.cabs.map((c: unknown, i: number) => {
@@ -179,6 +189,7 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     method: presets.some(p => p.key === r.method) ? (r.method as string) : (presets[0]?.key ?? PRESETS[0].key),
     materials,
     fronts,
+    banding,
     // Jobs saved before setup existed have no flag: treat them as set up.
     setupDone: r.setupDone !== false,
   };

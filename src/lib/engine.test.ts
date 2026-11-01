@@ -384,6 +384,20 @@ describe('sheet material summary', () => {
     for (const x of t) { expect([x.L, x.W]).toEqual([97, 49]); expect(x.yieldPct).toBeGreaterThan(0); expect(x.yieldPct).toBeLessThanOrEqual(100); expect(x.oversize).toBe(0); }
   });
 
+  it('splits the lineal feet between case parts and fronts', () => {
+    const job = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {});
+    const cab = job.cabs[0];
+    const sum = (ps: { qty: number; band: number }[]) => ps.reduce((a, p) => a + p.qty * p.band, 0) / 12;
+    expect(job.bandLf.case).toBeCloseTo(sum(cab.parts));
+    expect(job.bandLf.front).toBeCloseTo(sum(cab.fronts));
+    // Ends, deck, two top stretchers and the drawer stretcher: 30 + 30 + 13.5 + 27 + 13.5 inches.
+    expect(job.bandLf.case).toBeCloseTo(114 / 12);
+    expect(job.bandLf.case + job.bandLf.front).toBeCloseTo(job.materials.reduce((a, m) => a + m.bandLf, 0));
+    // Ordered (non-slab) fronts are not banded here.
+    const ordered = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {}, 'fraction', null, undefined, { door: { name: 'Shaker', slab: false, grain: 'Vertical' }, drawer: { name: 'Shaker', slab: false, grain: 'Vertical' } });
+    expect(ordered.bandLf.front).toBe(0);
+  });
+
   it('estimates edge banding per material: fronts all round, case parts and stretchers on the exposed edge', () => {
     const job = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {});
     const cab = job.cabs[0];

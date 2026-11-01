@@ -1,10 +1,10 @@
 'use client';
 import { useState } from 'react';
-import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type DefaultKey, type DimFormat, type Fmt, type FrontStyle, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type Banding, type DefaultKey, type DimFormat, type Fmt, type FrontStyle, type JobBanding, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 import { optionsFor, type ShopOptions } from '@/lib/shop';
-import { ChoiceField, MaterialField, StyleField } from './fields';
+import { BandingField, ChoiceField, MaterialField, StyleField } from './fields';
 
 const jobLabel = 'flex flex-col gap-1 text-[11px] font-bold tracking-[0.14em] uppercase text-muted';
 const jobInput = 'field text-[15px] tracking-normal normal-case text-ink px-2.5 py-2';
@@ -14,6 +14,7 @@ interface Props {
   method: string;
   defaults: RawDefaults;
   materials: JobMaterials;
+  banding: JobBanding;
   fronts: JobFronts;
   f: Fmt;
   dimFormat: DimFormat;
@@ -29,6 +30,7 @@ interface Props {
   onJob: (k: keyof JobInfo, v: string) => void;
   onDefault: (k: DefaultKey, v: string) => void;
   onMaterial: (slot: MatSlot, m: Material) => void;
+  onBanding: (slot: keyof JobBanding, b: Banding) => void;
   onFront: (slot: keyof JobFronts, s: FrontStyle) => void;
   /** Switch method: replaces the construction rules, leaving materials and hardware alone. */
   onPreset: (key: string) => void;
@@ -52,7 +54,7 @@ function Section({ step, title, sub, children }: { step: number; title: string; 
   );
 }
 
-export function JobSetup({ job, method, defaults, materials, fronts, f, dimFormat, onFormat, onExport, presets, shopMaterials, doorStyles, drawerFrontStyles, options, onJob, onDefault, onMaterial, onFront, onPreset, onResetRules, onContinue, existing }: Props) {
+export function JobSetup({ job, method, defaults, materials, banding, fronts, f, dimFormat, onFormat, onExport, presets, shopMaterials, doorStyles, drawerFrontStyles, options, onJob, onDefault, onMaterial, onBanding, onFront, onPreset, onResetRules, onContinue, existing }: Props) {
   const [tried, setTried] = useState(false);
   const custom = isCustomized(method, defaults, presets);
   const nameMissing = !job.name.trim();
@@ -144,6 +146,11 @@ export function JobSetup({ job, method, defaults, materials, fronts, f, dimForma
           {MAT_SLOTS.map(([slot, lab]) => (
             <MaterialField key={slot} label={lab} value={materials[slot]} materials={shopMaterials} onChange={m => onMaterial(slot, m)} />
           ))}
+        </div>
+        <div className="mt-1 grid gap-x-3.5 gap-y-2.5 border-t border-line-2 pt-3" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' }}>
+          <BandingField label="Case edge banding" value={banding.case} onChange={b => onBanding('case', b)} />
+          <BandingField label="Front edge banding" value={banding.front} onChange={b => onBanding('front', b)} />
+          <div className="col-span-full text-[11px] text-muted">Lineal feet are estimated separately for case parts and for doors and drawer fronts on the Sheets report.</div>
         </div>
       </Section>
 
