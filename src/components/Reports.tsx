@@ -119,8 +119,8 @@ export function AssemblySheets({ r, f, job, today }: ReportCtx) {
                 <div><span className="text-muted">Qty</span> {c.qty}</div>
                 <div><span className="text-muted">Toe height</span> {f(c.toe)}</div>
                 <div><span className="text-muted">Toe recess</span> {f(r.d.toeRecess)}</div>
-                <div><span className="text-muted">Back / Ends</span> Unfinished</div>
-                <div className="col-span-full"><span className="text-muted">Back</span> {f(r.d.backThk)}&quot; captured in {f(r.d.backGroove)}&quot; grooves all four sides, set in {f(r.d.backInset)}&quot; from the rear</div>
+                <div><span className="text-muted">Back / Ends</span> {c.finished ? `Finished interior · ${r.d.frontMat}` : 'Unfinished'}</div>
+                <div className="col-span-full"><span className="text-muted">Back</span> {f(c.finished && r.d.finishedBack ? r.d.finishedBack.thk : r.d.backThk)}&quot; {c.finished && r.d.finishedBack ? `(${r.d.finishedBack.name}) ` : ''}captured in {f(r.d.backGroove)}&quot; grooves all four sides, set in {f(r.d.backInset)}&quot; from the rear</div>
                 <div><span className="text-muted">Scribe / Stile</span> 0</div>
                 <div className="col-span-full text-muted">{c.toe > 0 ? 'Toe is a separate assembly — box height excludes toe.' : 'No toe kick — floor-set box.'}</div>
               </div>
@@ -275,7 +275,7 @@ export function CabinetListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
         heads={['#', 'Code', 'Type', 'Size (W x H x D)', 'Qty', 'Fronts', 'Notes']}
         rows={cabs.map(c => ({ key: c.idx, cells: [
           { v: c.idx, c: 'font-bold' }, { v: c.code, c: 'font-semibold' },
-          { v: `${c.catLabel} · ${c.typeLabel}` },
+          { v: `${c.catLabel} · ${c.typeLabel}${c.finished ? ' · finished interior' : ''}` },
           { v: c.bad ? '—' : c.panel ? `${f(c.W)} x ${f(c.H)}` : `${f(c.W)} x ${f(c.H)} x ${f(c.D)}${c.toe ? ` · toe ${f(c.toe)}` : ''}`, c: 'tabular-nums' },
           { v: c.qty, c: 'tabular-nums' }, { v: c.panel ? 'panel' : frontsTxt(c), c: 'text-ink-3' }, { v: notes(c) || '', c: 'text-ink-3' },
         ] }))} />

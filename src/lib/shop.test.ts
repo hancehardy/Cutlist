@@ -89,6 +89,9 @@ describe('jobs on shop settings', () => {
     expect(presetFor('gone', shop.presets)).toBe(thin);
     expect(normalizeJobDoc({ cabs: [], method: 'thin' }, shop).method).toBe('thin');
     expect(normalizeJobDoc({ cabs: [], method: 'gone' }, shop).method).toBe('thin');
+    // A cabinet keeps its finished-interior flag; anything else is dropped.
+    const cabs = normalizeJobDoc({ cabs: [{ type: 'B', w: '30', finished: true }, { type: 'B', w: '30', finished: 'yes' }, { type: 'B', w: '30' }] }, shop).cabs;
+    expect(cabs.map(c => c.finished)).toEqual([true, undefined, undefined]);
   });
 
   it('starts a blank job on the default method, materials and first hardware choices', () => {

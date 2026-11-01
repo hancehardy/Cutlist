@@ -162,6 +162,7 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
       type: str(o.type).trim() || shop.catalog.types[0]?.code || 'B',
       w: str(o.w), h: str(o.h), d: str(o.d), toe: str(o.toe, '0'), qty: str(o.qty, '1'),
       layout: layout && layout.length ? layout : null,
+      ...(o.finished === true ? { finished: true } : {}),
     };
   });
   // Ids must be unique for row keys and selection.

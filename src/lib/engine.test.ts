@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_CATALOG, SINK_SKIRT, addCasePart, buildJob, defaultCaseParts, defaultLayout, evalDim, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, resolveQty, sheetTotals, type CabCatalog, type CabInput, type CasePart } from './engine';
+import { BUILTIN_CATALOG, SINK_SKIRT, addCasePart, buildJob, defaultCaseParts, defaultLayout, evalDim, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, resolveQty, finishedBackFor, sheetTotals, type CabCatalog, type CabInput, type CasePart } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
 import { PRESETS, isCustomized, type Preset } from './presets';
-import { defaultShopConfig } from './shop';
+import { BUILTIN_MATERIALS, defaultShopConfig } from './shop';
 
 describe('parseDim / fmt', () => {
   it('parses fractions, mixed numbers and decimals', () => {
@@ -597,5 +597,46 @@ describe('case parts per box', () => {
     const part = cab.parts.find(p => p.desc === 'Drawer Partition')!;
     expect([part.qty, part.w, part.l, part.mat, part.band]).toEqual([2, 23, 6.125, d.frontMat, 0]);
     expect(SINK_SKIRT.w).toBe('faceA + 3/4');
+  });
+});
+
+describe('finished interior', () => {
+  const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
+  const mats = { case: M('3/4 2s Melamine', '3/4'), back: M('1/4 1s Melamine', '1/4'), front: M('3/4 Prefinished Maple Ply', '3/4'), toe: M('1/4 1s Melamine', '1/4') };
+  const cab = (finished: boolean, type = 'B'): CabInput => ({ id: 1, type, w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1', finished });
+
+  it('matches a 3/4 sheet with the 1/4 sheet of the same name, ignoring the face count', () => {
+    const pick = (name: string) => finishedBackFor(M(name, '3/4'), BUILTIN_MATERIALS)?.name ?? null;
+    expect(pick('3/4 2s Melamine')).toBe('1/4 1s Melamine');
+    expect(pick('3/4 Prefinished Maple Ply')).toBe('1/4 Prefinished Maple Ply');
+    expect(pick('3/4 MDF')).toBeNull();
+    expect(finishedBackFor(M('18mm Birch', '0.71'), [M('6mm Birch', '0.236'), M('3/4 Birch', '3/4')])?.name).toBe('6mm Birch');
+  });
+
+  it('cuts the case from the front material and the back from its 1/4 mate; the sheet size comes along', () => {
+    const job = buildJob([cab(true), cab(false)], {}, 'fraction', mats, undefined, null, BUILTIN_MATERIALS);
+    const [fin, plain] = job.cabs;
+    const mat = (c: typeof fin, desc: string) => c.parts.find(p => p.desc === desc)!.mat;
+    expect(fin.finished).toBe(true);
+    expect(['Unfinished Left End', 'Deck', 'Nailer', 'Top Stretcher', 'Adjustable Shelf'].map(n => mat(fin, n))).toEqual(Array(5).fill('3/4 Prefinished Maple Ply'));
+    expect(mat(fin, 'Unfinished Back')).toBe('1/4 Prefinished Maple Ply');
+    expect(fin.warn).toBe('');
+    expect(['Unfinished Left End', 'Unfinished Back'].map(n => mat(plain, n))).toEqual(['3/4 2s Melamine', '1/4 1s Melamine']);
+    expect(job.d.finishedBack).toEqual({ name: '1/4 Prefinished Maple Ply', thk: 0.25 });
+    expect(job.d.sheets['1/4 Prefinished Maple Ply']).toEqual({ L: 97, W: 49 });
+    expect(job.materials.map(m => m.name)).toEqual(expect.arrayContaining(['1/4 Prefinished Maple Ply', '3/4 Prefinished Maple Ply']));
+    // The job's own materials can supply the mate when the shop list is not passed.
+    const own = buildJob([cab(true)], {}, 'fraction', { ...mats, front: M('3/4 2s Melamine', '3/4') }).cabs[0];
+    expect(own.parts.find(p => p.desc === 'Unfinished Back')!.mat).toBe('1/4 1s Melamine');
+  });
+
+  it('without a 1/4 mate the back keeps the job material and the cabinet warns; accessories ignore the flag', () => {
+    const job = buildJob([cab(true), { ...cab(true, 'FIL'), d: '0', toe: '0' }], {}, 'fraction', { ...mats, front: M('3/4 MDF', '3/4') }, undefined, null, BUILTIN_MATERIALS);
+    const [fin, panel] = job.cabs;
+    expect(fin.parts.find(p => p.desc === 'Unfinished Back')!.mat).toBe('1/4 1s Melamine');
+    expect(fin.parts.find(p => p.desc === 'Deck')!.mat).toBe('3/4 MDF');
+    expect(fin.warn).toContain('No 1/4" material matches 3/4 MDF');
+    expect(panel.finished).toBe(false);
+    expect(panel.parts[0].mat).toBe('3/4 MDF');
   });
 });

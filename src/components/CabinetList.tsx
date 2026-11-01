@@ -90,8 +90,14 @@ export function CabinetList({ cabs, built, catalog, d, f, selId, pickId, onUpdat
             )}
             <div className="-mt-0.5 flex items-start gap-2.5" style={{ gridColumn: '2 / -1' }}>
               <div className="min-w-0 flex-1 text-xs text-pretty text-muted">
-                {b.code} — {b.bad ? (panel ? 'enter width and height' : 'enter width, height and depth') : panel ? `${b.qty > 1 ? b.qty + ' × ' : ''}${f(b.W)} x ${f(b.H)} panel` : `${f(b.W)} x ${f(b.H)} x ${f(b.D)}`}{!panel && b.qty > 1 ? ` · ×${b.qty} (saved before one-per-row entry)` : ''}{fronts}
+                {b.code} — {b.bad ? (panel ? 'enter width and height' : 'enter width, height and depth') : panel ? `${b.qty > 1 ? b.qty + ' × ' : ''}${f(b.W)} x ${f(b.H)} panel` : `${f(b.W)} x ${f(b.H)} x ${f(b.D)}`}{!panel && b.qty > 1 ? ` · ×${b.qty} (saved before one-per-row entry)` : ''}{b.finished ? ' · finished interior' : ''}{fronts}
               </div>
+              {!panel && (
+                <label className="flex flex-none cursor-pointer items-center gap-1.5 py-1 text-xs font-bold text-ink-3 select-none" title="Cut the case from the front material and the back from the 1/4&quot; material that matches it">
+                  <input type="checkbox" checked={!!c.finished} onChange={e => onUpdate(c.id, { finished: e.target.checked || undefined })} className="h-3.5 w-3.5 accent-accent" aria-label={`Finished interior for cabinet ${i + 1}`} />
+                  Finished interior
+                </label>
+              )}
               <button onClick={() => onDuplicate(c.id)} title="Add a copy of this cabinet below" className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Duplicate</button>
               {!panel && <button onClick={() => onConfigure(c.id)} className="flex-none rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Configure</button>}
             </div>

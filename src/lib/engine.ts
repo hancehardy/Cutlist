@@ -27,6 +27,8 @@ export interface CabInput {
   toe: string;
   qty: string;
   layout?: SectionInput[] | null;
+  /** Finished interior: the case is cut from the front material and the back from the 1/4" material that matches it. */
+  finished?: boolean;
 }
 
 export function parseDim(s: unknown): number {
@@ -265,11 +267,24 @@ export interface JobFronts { door: FrontStyle; drawer: FrontStyle }
 /** How the resolved front styles drive the engine. */
 export interface FrontRules { doorSlab: boolean; drawerSlab: boolean; drawerGrain: Grain; drawerFrontStyle: string }
 
-export type Resolved = { [K in DefaultKey]: DefaultsShape[K] } & { glideLenList: number[]; sheets: Record<string, { L: number; W: number }>; fronts: FrontRules };
+export type Resolved = { [K in DefaultKey]: DefaultsShape[K] } & {
+  glideLenList: number[]; sheets: Record<string, { L: number; W: number }>; fronts: FrontRules;
+  /** The 1/4" material a finished interior's back is cut from: the front material's thin mate, when the shop has one. */
+  finishedBack: { name: string; thk: number } | null;
+};
+
+/** A material name without its leading thickness or a 1s/2s face count, for matching a 3/4 sheet with its 1/4 mate. */
+const matKey = (name: string) => name.toLowerCase().replace(/^\s*(\d+\/\d+|\d*\.\d+|\d+)(["”]|in\b)?\s*/, '').replace(/\b\d+s\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+/** The 1/4" (about 3/16" to 5/16") material whose name matches the front material's: "3/4 2s Melamine" → "1/4 1s Melamine". */
+export function finishedBackFor(front: Material, all: Material[]): Material | null {
+  const key = matKey(front.name);
+  if (!key) return null;
+  return all.find(m => { const t = parseDim(m.thk); return t >= 0.18 && t <= 0.32 && matKey(m.name) === key; }) ?? null;
+}
 
 const posDim = (v: unknown, fallback: number) => { const n = parseDim(v); return isNaN(n) || n <= 0 ? fallback : n; };
 
-export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMaterials | null, fronts?: JobFronts | null): Resolved {
+export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMaterials | null, fronts?: JobFronts | null, shopMaterials?: Material[] | null): Resolved {
   const d = {} as Record<string, unknown>;
   for (const k of Object.keys(DEFAULTS) as DefaultKey[]) {
     const v = raw?.[k] ?? DEFAULTS[k];
@@ -278,6 +293,7 @@ export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMateria
   const r = d as Resolved;
   r.glideLenList = String(r.glideLens).split(/[,\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b);
   r.sheets = {};
+  r.finishedBack = null;
   // Without styles every front is a slab cut in the shop with vertical grain, as before styles existed.
   r.fronts = { doorSlab: true, drawerSlab: true, drawerGrain: 'Vertical', drawerFrontStyle: r.doorStyle };
   if (fronts) {
@@ -295,6 +311,12 @@ export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMateria
     for (const [slot, name] of [['case', r.caseMat], ['back', r.backMat], ['front', r.frontMat], ['toe', r.toeMat]] as [MatSlot, string][]) {
       const m = materials[slot];
       if (!(name in r.sheets)) r.sheets[name] = { L: posDim(m.l, r.sheetL), W: posDim(m.w, r.sheetW) };
+    }
+    // The shop's list first; a job built without it can still match one of its own four materials.
+    const fb = finishedBackFor(materials.front, [...(shopMaterials ?? []), materials.back, materials.toe, materials.case]);
+    if (fb) {
+      r.finishedBack = { name: fb.name.trim(), thk: posDim(fb.thk, DEFAULTS.backThk) };
+      if (!(r.finishedBack.name in r.sheets)) r.sheets[r.finishedBack.name] = { L: posDim(fb.l, r.sheetL), W: posDim(fb.w, r.sheetW) };
     }
   }
   return r;
@@ -368,6 +390,8 @@ export interface BuiltCabinet {
   skipped: string[];
   /** An accessory: a single cut panel, no case, faces or hardware. */
   panel: boolean;
+  /** Finished interior: case parts cut from the front material, the back from its 1/4" mate. */
+  finished: boolean;
   boxH: number; isWall: boolean; isTall: boolean; autoH: number; avail: number;
 }
 
@@ -378,12 +402,13 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const t = known ?? catalog.types[0] ?? BUILTIN_TYPES[0];
   const style = categoryFor(catalog, t.cat)?.style ?? 'base';
   const panel = style === 'panel';
+  const finished = !!c.finished && !panel;
   // A panel needs only a width and height; a case needs a depth too.
   const bad = panel ? [W, H].some(isNaN) || W <= 0 || H <= 0 : [W, H, D].some(isNaN) || W <= 0 || H <= 0 || D <= 0 || toe >= H;
   const out: BuiltCabinet = {
     idx, type: c.type, cat: t.cat, catLabel: categoryLabel(catalog, t.cat), typeLabel: t.label, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
     parts: [], fronts: [], drawers: [], hardware: [], sections: [], warn: '', custom: !!c.layout, bad, skipped: [],
-    qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0, panel,
+    qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0, panel, finished,
   };
   if (bad) return out;
   if (panel) {
@@ -410,7 +435,11 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const layout = c.layout && c.layout.length ? c.layout : defaultLayout(c.type, d, H, catalog);
   // Frameless back: captured in a groove on all four sides, set in from the rear edge so
   // nailers fit behind it. Usable depth inside the box stops at the back's front face.
-  const inD = D - d.backInset - d.backThk;
+  // A finished interior takes its back from the front material's 1/4" mate; without one it keeps the job's back.
+  const backMat = finished && d.finishedBack ? d.finishedBack.name : d.backMat;
+  const backThk = finished && d.finishedBack ? d.finishedBack.thk : d.backThk;
+  if (finished && !d.finishedBack && !out.warn) out.warn = `No 1/4" material matches ${d.frontMat} for a finished interior; the back is cut from ${d.backMat}.`;
+  const inD = D - d.backInset - backThk;
   // Faces (the case parts follow, once the layout has fixed the counts and face heights)
   const gap = d.frontGap, openH = boxH - d.topReveal - d.bottomReveal, frontW = W - 2 * d.sideReveal;
   const hs = layout.map(s => { const v = parseDim(s.h); return isNaN(v) || v <= 0 ? null : v; });
@@ -467,10 +496,10 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   if (!isWall && !isTall && layout.some(s => s.kind === 'drawer')) drawerStretch = Math.max(drawerStretch, 1);
   // Case: the box's parts list (or what its category style builds), each sized from the named dimensions.
   // Edge banding: the front edge of ends, decks, tops, shelves and partitions, the long edge of stretchers.
-  const ctx = caseDims(out, d);
+  const ctx = { ...caseDims(out, d), inD, backThk };
   const autoQty: Record<string, number> = { drawerStretcher: drawerStretch, fixedShelf: fixedShelves, adjShelf: shelves };
   const autoSize: Record<string, { w?: number; l?: number }> = { partition: { w: inD } };
-  const matOf = (m: MatSlot) => (m === 'back' ? d.backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : d.caseMat);
+  const matOf = (m: MatSlot) => (m === 'back' ? backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : finished ? d.frontMat : d.caseMat);
   let adjShelves = 0;
   for (const part of t.case?.parts ?? defaultCaseParts(style)) {
     if (!part.on) continue;
@@ -557,9 +586,9 @@ export interface JobResult {
 
 const cabRef = (idx: number, q: number) => (q > 1 ? `${idx} (${q})` : `${idx}`);
 
-export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null, catalog: CabCatalog = BUILTIN_CATALOG, fronts?: JobFronts | null): JobResult {
+export function buildJob(cabs: CabInput[], rawDefaults?: RawDefaults | null, mode: DimFormat = 'fraction', jobMaterials?: JobMaterials | null, catalog: CabCatalog = BUILTIN_CATALOG, fronts?: JobFronts | null, shopMaterials?: Material[] | null): JobResult {
   const f = makeFmt(mode);
-  const d = resolveDefaults(rawDefaults, jobMaterials, fronts);
+  const d = resolveDefaults(rawDefaults, jobMaterials, fronts, shopMaterials);
   const built = cabs.map((c, i) => buildCabinet(c, d, i + 1, f, catalog));
   const byMat: Record<string, { name: string; rows: Record<string, Omit<MaterialRow, 'size' | 'grainTxt' | 'cabsTxt'>>; rips: Record<number, number>; band: number }> = {};
   const key = (p: Part) => `${p.desc}|${p.w}|${p.l}|${p.grain}`;

@@ -56,8 +56,8 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user, initialOrder 
   const f = useMemo(() => makeFmt(doc.dimFormat), [doc.dimFormat]);
   // Saw settings are shop-wide and live, so they overlay the job's rules at build time.
   const result = useMemo(
-    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials, shop.catalog, doc.fronts),
-    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, doc.fronts, shop.saw, shop.catalog],
+    () => buildJob(doc.cabs, { ...doc.defaults, kerf: shop.saw.kerf, edgeTrim: shop.saw.edgeTrim }, doc.dimFormat, doc.materials, shop.catalog, doc.fronts, shop.materials),
+    [doc.cabs, doc.defaults, doc.dimFormat, doc.materials, doc.fronts, shop.saw, shop.catalog, shop.materials],
   );
   const { cabs, job } = doc;
 
