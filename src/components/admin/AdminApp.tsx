@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import Link from 'next/link';
 import { defaultShopConfig, type ShopConfig } from '@/lib/shop';
 import { SaveIndicator, useAutosave } from '../useAutosave';
 import { MethodsEditor } from './MethodsEditor';
@@ -36,7 +35,6 @@ export function AdminApp({ initial, skuImages, users, me }: { initial: ShopConfi
           <div className="rounded-full bg-ink px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.12em] text-white uppercase">Admin</div>
           <SaveIndicator state={save.state} />
           <UserMenu user={me} admin />
-          <Link href="/" className="text-[13px] font-bold">← Back to jobs</Link>
         </div>
 
         <div className="flex flex-col gap-1">

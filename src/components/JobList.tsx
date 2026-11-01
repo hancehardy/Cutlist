@@ -39,7 +39,7 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
     const res = await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
-    if (res.ok) router.push(`/?job=${data.id}`); else setErr(data.error || 'Could not create the job.');
+    if (res.ok) router.push(`/job/${data.id}`); else setErr(data.error || 'Could not create the job.');
   };
   const importJson = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fl = e.target.files?.[0];
@@ -67,7 +67,6 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
           <img src="/assets/logo-mark.png" alt="" className="h-[34px] w-[34px] object-contain" />
           <div className="text-[22px] font-extrabold tracking-[-0.01em]">Cutlist</div>
           <UserMenu user={me} />
-          <Link href="/" className="text-[13px] font-bold">← Current job</Link>
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
@@ -102,7 +101,7 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
             {['Job', 'Catalog', 'Cabs', ...(admin ? ['User'] : []), 'Updated', 'Created', ''].map((h, i) => <div key={i} className="th py-2">{h}</div>)}
             {rows.map(j => (
               <div key={j.id} className="contents">
-                <Link href={`/?job=${j.id}`} className="td min-w-0 text-ink hover:text-ink">
+                <Link href={`/job/${j.id}`} className="td min-w-0 text-ink hover:text-ink">
                   <div className="truncate text-[14px] font-bold">{j.name || 'Untitled job'}</div>
                   {j.client && <div className="truncate text-xs text-muted">{j.client}</div>}
                 </Link>
@@ -112,7 +111,7 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
                 <div className="td text-[13px] text-ink-3 tabular-nums">{when(j.updatedAt)}</div>
                 <div className="td text-[13px] text-ink-3 tabular-nums">{when(j.createdAt)}</div>
                 <div className="td flex items-center justify-end gap-1">
-                  <Link href={`/?job=${j.id}`} className="rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink hover:no-underline">Open</Link>
+                  <Link href={`/job/${j.id}`} className="rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink hover:no-underline">Open</Link>
                   <button onClick={() => remove(j)} title="Delete job" className="h-7 w-7 rounded-md border-none bg-transparent text-base text-faint hover:bg-canvas hover:text-danger">×</button>
                 </div>
               </div>

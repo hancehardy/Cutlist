@@ -1,18 +1,20 @@
-import { CutlistApp } from '@/components/CutlistApp';
+import { Home } from '@/components/Home';
 import { requireUser } from '@/lib/auth';
-import { createJob, getJob, getShopConfig, listJobs } from '@/lib/db';
-import { emptyJob } from '@/lib/job';
+import { countUsers, getShopConfig, listJobs } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// Opens ?job=<id>, or the most recently edited job the signed-in user may see.
-export default async function Page({ searchParams }: { searchParams: Promise<{ job?: string }> }) {
+/** Home: a greeting, quick actions, recent jobs, and shop counts for admins. */
+export default async function HomePage() {
   const user = await requireUser();
-  const { job: requested } = await searchParams;
+  const jobs = listJobs(user);
   const shop = getShopConfig();
-  let jobs = listJobs(user);
-  // No jobs yet (or every job was deleted): start a blank one for this user.
-  if (!jobs.length) { createJob(emptyJob(shop), user.id); jobs = listJobs(user); }
-  const initial = (requested && getJob(requested, user)) || getJob(jobs[0].id, user)!;
-  return <CutlistApp key={initial.id} jobId={initial.id} initialDoc={initial.doc} initialShop={shop} user={{ username: user.username, role: user.role }} />;
+  const admin = user.role === 'admin';
+  return (
+    <Home
+      me={{ id: user.id, username: user.username, role: user.role }}
+      recent={jobs.slice(0, 6)}
+      totals={{ jobs: jobs.length, users: admin ? countUsers() : 0, materials: shop.materials.length, methods: shop.presets.length, boxes: shop.catalog.types.length }}
+    />
+  );
 }

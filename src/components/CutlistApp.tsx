@@ -73,7 +73,7 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
   const select = (id: number, sec = 0) => { setSelId(id); setSelSec(sec); };
   const selCabId = (cabs.find(c => c.id === selId) || cabs[0])?.id;
 
-  const openJob = async (id: string) => { await save.flush(); router.push(`/?job=${id}`); };
+  const openJob = async (id: string) => { await save.flush(); router.push(`/job/${id}`); };
   const goJobs = async () => { await save.flush(); router.push('/jobs'); };
   const newJob = async () => {
     const res = await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
