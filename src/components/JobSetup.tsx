@@ -141,7 +141,7 @@ export function JobSetup({ job, method, defaults, materials, banding, fronts, f,
         </div>
       </Section>
 
-      <Section step={3} title="Materials" sub="Thickness and sheet size come with each material · add or edit materials in Admin">
+      <Section step={3} title="Materials" sub="Thickness and sheet size come with each material. Choose Other… to type your own.">
         <div className="grid gap-x-3.5 gap-y-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' }}>
           {MAT_SLOTS.map(([slot, lab]) => (
             <MaterialField key={slot} label={lab} value={materials[slot]} materials={shopMaterials} onChange={m => onMaterial(slot, m)} />
@@ -154,7 +154,7 @@ export function JobSetup({ job, method, defaults, materials, banding, fronts, f,
         </div>
       </Section>
 
-      <Section step={4} title="Fronts" sub="Slab styles are cut and optimized here; any other style is ordered and only listed on the door list">
+      <Section step={4} title="Fronts" sub="Slab styles are cut and optimized here; any other style is only listed on the door list">
         <div className="grid gap-x-3.5 gap-y-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' }}>
           <StyleField label="Door front style" value={fronts.door} styles={doorStyles} onChange={s => onFront('door', s)} />
           <StyleField label="Drawer front style" value={fronts.drawer} styles={drawerFrontStyles} grain onChange={s => onFront('drawer', s)} />
