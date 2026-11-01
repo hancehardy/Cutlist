@@ -1,0 +1,22 @@
+# Render Blueprint: one Node web service with a persistent disk for the SQLite database.
+# In Render: New → Blueprint → pick this repo; Render reads this file and creates the service.
+# The database must live on the disk (CUTLIST_DB below) or it is lost on every deploy. Keep one instance:
+# SQLite does not share a file between servers.
+services:
+  - type: web
+    name: cutlist
+    runtime: node
+    plan: starter
+    branch: main
+    numInstances: 1
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.23.3
+      - key: CUTLIST_DB
+        value: /var/data/cutlist.db
+    disk:
+      name: cutlist-data
+      mountPath: /var/data
+      sizeGB: 1

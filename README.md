@@ -27,6 +27,24 @@ npm run build && npm start
 
 ---
 
+## Deploying
+
+The app is a single Node server with a SQLite file, so it needs a host with a **persistent disk**. Render fits;
+Vercel's filesystem is wiped on every deploy, so it would lose the data unless the storage were moved to a hosted database.
+
+**Render (Blueprint).** `render.yaml` describes the service: Node 22, `npm ci && npm run build`, `npm start`, one
+instance on the Starter plan, a 1 GB disk at `/var/data`, and `CUTLIST_DB=/var/data/cutlist.db`.
+
+1. Merge to `main`; the Blueprint deploys that branch.
+2. In Render: **New → Blueprint**, pick the repository, accept the plan. Render creates the service and disk and runs the first deploy.
+3. Open the service URL **before sharing it**: the first account created becomes the admin. Then set up materials, methods and boxes on the Admin page.
+4. Invite testers to sign up at the URL. Manage them from Admin › Users.
+
+Notes: `next start` reads Render's `PORT`; `NODE_ENV=production` makes the session cookie secure. Sign-up is open to
+anyone with the URL and there is no login rate limiting, which is fine for a closed test. To back up, download
+`cutlist.db` from the disk (Render's shell: `cat /var/data/cutlist.db`, or a disk snapshot on plans that have them)
+before upgrades. Any other host works the same way: set `CUTLIST_DB` to a path on persistent storage and run one instance.
+
 # CODING AGENTS: READ THIS FIRST
 
 This is a **handoff bundle** from Claude Design (claude.ai/design).
