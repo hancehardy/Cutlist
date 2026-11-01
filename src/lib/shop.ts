@@ -26,7 +26,7 @@ export interface SawSettings { kerf: string; edgeTrim: string }
 
 /** Bump `version` when a migration must run once on stored documents (see normalizeShopConfig). */
 export interface ShopConfig {
-  version: 5;
+  version: 6;
   /** Sheet goods in display order. */
   materials: Material[];
   /** Dropdown choices per hardware field, in display order. An empty list turns the field into free text. */
@@ -60,7 +60,7 @@ export const BUILTIN_MATERIALS: Material[] = [
 /** The built-in materials, choices, saw settings and method the app ships with. */
 export function defaultShopConfig(): ShopConfig {
   return {
-    version: 5,
+    version: 6,
     materials: BUILTIN_MATERIALS.map(m => ({ ...m })),
     options: Object.fromEntries(OPTION_KEYS.map(k => [k, [...OPTIONS[k]!]])),
     doorStyles: BUILTIN_DOOR_STYLES.map(s => ({ ...s })),
@@ -398,8 +398,16 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
       if (!t.panel && !t.case && (t.code === 'SB' || t.code === 'VSB')) t.case = { parts: sinkBaseParts(style) };
     }
   }
+  // Version 6 turned the deck, top and shelves to vertical grain. Boxes saved with their own parts list (the sink
+  // bases, from version 5) follow once; a part the admin set horizontal after this is kept.
+  if (version < 6) {
+    const flip = new Set(['deck', 'top', 'fixedShelf', 'adjShelf']);
+    for (const t of catalog.types) {
+      if (t.case) t.case = { parts: t.case.parts.map(p => (flip.has(p.key) && p.grain === 'Horizontal' ? { ...p, grain: 'Vertical' } : p)) };
+    }
+  }
   return {
-    version: 5, materials: materials.length ? materials : builtin.materials, options, saw,
+    version: 6, materials: materials.length ? materials : builtin.materials, options, saw,
     doorStyles: normStyles(r.doorStyles, normList(rawOpts.doorStyle), builtin.doorStyles),
     drawerFrontStyles: normStyles(r.drawerFrontStyles, normList(rawOpts.doorStyle), builtin.drawerFrontStyles),
     presets: presets.length ? presets : builtin.presets,

@@ -138,14 +138,14 @@ export function defaultCaseParts(style: BuildStyle): CasePart[] {
     p('rightEnd', 'Unfinished Right End', '1', 'D', 'boxH', 'Vertical', 'l'),
     // Captured in a groove on all four sides: the groove depth on each side, inside the ends and the deck and top.
     p('back', 'Unfinished Back', '1', 'inW + 2*backGroove', 'boxH - 2*caseThk + 2*backGroove', 'Vertical', 'none', true, 'back'),
-    p('deck', wall ? 'Bottom' : 'Deck', '1', 'D', 'inW', 'Horizontal', 'l'),
-    p('top', 'Top', '1', 'D', 'inW', 'Horizontal', 'l', wall || tall),
+    p('deck', wall ? 'Bottom' : 'Deck', '1', 'D', 'inW', 'Vertical', 'l'),
+    p('top', 'Top', '1', 'D', 'inW', 'Vertical', 'l', wall || tall),
     p('nailer', 'Nailer', wall ? '2' : '1', 'stretcherW', 'inW', 'Vertical', 'none'),
     p('topStretcher', 'Top Stretcher', '2', 'stretcherW', 'inW', 'Vertical', 'l', !wall && !tall),
     p('partition', 'Drawer Partition', 'auto', 'inD', 'auto', 'Vertical', 'l'),
     p('drawerStretcher', 'Drawer Stretcher', 'auto', 'stretcherW', 'inW', 'Vertical', 'l'),
-    p('fixedShelf', 'Fixed Shelf', 'auto', 'inD', 'inW', 'Horizontal', 'l'),
-    p('adjShelf', 'Adjustable Shelf', 'auto', 'inD - shelfSetback', 'inW - shelfClear', 'Horizontal', 'l'),
+    p('fixedShelf', 'Fixed Shelf', 'auto', 'inD', 'inW', 'Vertical', 'l'),
+    p('adjShelf', 'Adjustable Shelf', 'auto', 'inD - shelfSetback', 'inW - shelfClear', 'Vertical', 'l'),
   ];
 }
 /** Add a custom part where extras go, before the adjustable shelves, with a key no other part uses. */
