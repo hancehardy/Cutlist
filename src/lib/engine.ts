@@ -226,7 +226,7 @@ export const DEFAULTS = {
   rolloutH: 3.5, rolloutSpacer: 1,
   glideSeries: '563H', glideLens: '9, 12, 15, 18, 21', glideDeduct: 3,
   kerf: 0.187, sheetL: 97, sheetW: 49, edgeTrim: 0.25,
-  caseMat: '3/4 2s Melamine', backMat: '1/4 1s Melamine', frontMat: '3/4 2s Melamine', toeMat: '1/4 1s Melamine',
+  caseMat: '3/4 2s Melamine', backMat: '1/4 1s Melamine', frontMat: '3/4 2s Melamine', toeMat: '1/4 1s Melamine', subtopMat: '3/4 2s Melamine', ladderMat: '3/4 2s Melamine',
   doorSplit: 24, tallLowerDoor: 30, pull: '4in C-Pull', hinge: 'Blum 110° Clip-top', shelfSetback: 1, shelfClear: 0.0625,
   drawerStyle: '5 Piece Drawer', doorStyle: 'Slab (Melamine)',
 };
@@ -276,10 +276,19 @@ const NUM_KEYS = new Set<DefaultKey>((Object.keys(DEFAULTS) as DefaultKey[]).fil
 
 /** A sheet good: name, thickness and stock sheet size, in inches as typed. */
 export interface Material { name: string; thk: string; w: string; l: string }
-export type MatSlot = 'case' | 'back' | 'front' | 'toe';
-export const MAT_SLOTS: [MatSlot, string][] = [['case', 'Case material'], ['back', 'Back material'], ['front', 'Front material'], ['toe', 'Toe kick material']];
-/** The materials a job is built from: thickness drives the case and back rules, sheet size drives the saw plan. */
-export type JobMaterials = Record<MatSlot, Material>;
+export type MatSlot = 'case' | 'back' | 'front' | 'toe' | 'subtop' | 'ladder';
+export const MAT_SLOTS: [MatSlot, string][] = [
+  ['case', 'Case material'], ['back', 'Back material'], ['front', 'Front material'], ['toe', 'Toe kick material'],
+  ['subtop', 'Subtop material'], ['ladder', 'Ladder pack material'],
+];
+/**
+ * The materials a job is built from: thickness drives the case and back rules, sheet size drives the saw plan. The subtop
+ * and ladder pack slots came later, so a job may lack them; they then follow the case material.
+ */
+export type JobMaterials = Record<'case' | 'back' | 'front' | 'toe', Material> & Partial<Record<'subtop' | 'ladder', Material>>;
+/** The job material a slot resolves to. A finished interior's case and back are handled in buildCabinet. */
+export const slotMaterial = (d: Resolved, slot: MatSlot) =>
+  slot === 'back' ? d.backMat : slot === 'front' ? d.frontMat : slot === 'toe' ? d.toeMat : slot === 'subtop' ? d.subtopMat : slot === 'ladder' ? d.ladderMat : d.caseMat;
 
 /** Edge banding thickness: flat tape or 1 mm. */
 export type BandThk = 'flat' | '1mm';
@@ -335,12 +344,14 @@ export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMateria
     r.backMat = materials.back.name.trim() || DEFAULTS.backMat;
     r.frontMat = materials.front.name.trim() || DEFAULTS.frontMat;
     r.toeMat = materials.toe.name.trim() || DEFAULTS.toeMat;
+    r.subtopMat = materials.subtop?.name.trim() || r.caseMat;
+    r.ladderMat = materials.ladder?.name.trim() || r.caseMat;
     r.caseThk = posDim(materials.case.thk, DEFAULTS.caseThk);
     r.backThk = posDim(materials.back.thk, DEFAULTS.backThk);
     // Sheet size per material name; when two slots share a name the case wins (it has the most parts).
-    for (const [slot, name] of [['case', r.caseMat], ['back', r.backMat], ['front', r.frontMat], ['toe', r.toeMat]] as [MatSlot, string][]) {
+    for (const [slot, name] of [['case', r.caseMat], ['back', r.backMat], ['front', r.frontMat], ['toe', r.toeMat], ['subtop', r.subtopMat], ['ladder', r.ladderMat]] as [MatSlot, string][]) {
       const m = materials[slot];
-      if (!(name in r.sheets)) r.sheets[name] = { L: posDim(m.l, r.sheetL), W: posDim(m.w, r.sheetW) };
+      if (m && !(name in r.sheets)) r.sheets[name] = { L: posDim(m.l, r.sheetL), W: posDim(m.w, r.sheetW) };
     }
     // The shop's list first; a job built without it can still match one of its own four materials.
     const fb = finishedBackFor(materials.front, [...(shopMaterials ?? []), materials.back, materials.toe, materials.case]);
@@ -444,7 +455,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   if (panel) {
     // An accessory is one panel W wide by H high in the chosen job material; no case, faces or hardware.
     const spec = t.panel ?? DEFAULT_PANEL;
-    const mat = spec.mat === 'case' ? d.caseMat : spec.mat === 'back' ? d.backMat : spec.mat === 'toe' ? d.toeMat : d.frontMat;
+    const mat = slotMaterial(d, spec.mat);
     const band = spec.band === 'all' ? 2 * (W + H) : spec.band === 'long' ? Math.max(W, H) : 0;
     out.parts.push({ qty: 1, desc: t.label, w: W, l: H, grain: spec.grain, mat, band, cut: true });
     out.label = `${f(W)}" x ${f(H)}" ${t.label}`;
@@ -530,7 +541,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const ctx = { ...caseDims(out, d), inD, backThk };
   const autoQty: Record<string, number> = { drawerStretcher: drawerStretch, fixedShelf: fixedShelves, adjShelf: shelves };
   const autoSize: Record<string, { w?: number; l?: number }> = { partition: { w: inD } };
-  const matOf = (m: MatSlot) => (m === 'back' ? backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : finished ? d.frontMat : d.caseMat);
+  const matOf = (m: MatSlot) => (m === 'back' ? backMat : m === 'case' && finished ? d.frontMat : slotMaterial(d, m));
   let adjShelves = 0;
   for (const part of t.case?.parts ?? defaultCaseParts(style)) {
     if (!part.on) continue;

@@ -51,7 +51,7 @@ export function sampleJob(): JobDoc {
     ],
     dimFormat: 'fraction',
     method: PRESETS[0].key,
-    materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 }, toe: { ...MELAMINE_14 } },
+    materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 }, toe: { ...MELAMINE_14 }, subtop: { ...MELAMINE_34 }, ladder: { ...MELAMINE_34 } },
     fronts: { door: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' }, drawer: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' } },
     banding: defaultBanding(),
     setupDone: true,
@@ -116,6 +116,7 @@ function migrateMaterials(defaults: RawDefaults, shop: ShopConfig): JobMaterials
     case: one(caseName, defaults.caseThk),
     back: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
     front: one(frontName, defaults.caseThk),
+    subtop: one(caseName, defaults.caseThk), ladder: one(caseName, defaults.caseThk),
     // Toe kick skins did not have their own material before; start from the back material.
     toe: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
   };
@@ -144,7 +145,8 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
     const m = r.materials as Record<string, unknown>;
     const c = normMaterial(m.case), b = normMaterial(m.back), f = normMaterial(m.front);
     // Jobs saved before the toe kick material existed use their back material for it.
-    if (c && b && f) materials = { case: c, back: b, front: f, toe: normMaterial(m.toe) ?? { ...b } };
+    // Subtop and ladder pack came later still; they start from the case material.
+    if (c && b && f) materials = { case: c, back: b, front: f, toe: normMaterial(m.toe) ?? { ...b }, subtop: normMaterial(m.subtop) ?? { ...c }, ladder: normMaterial(m.ladder) ?? { ...c } };
   }
   if (!materials) materials = migrateMaterials(defaults, shop);
   // The old drawer box width deduct included the case sides; the clearance is what is left after this job's case thickness.
