@@ -1,6 +1,7 @@
-import type { CabInput, DimFormat, Kind, RawDefaults, SectionInput } from './engine';
-import { DEFAULTS, TYPES } from './engine';
-import { DEFAULT_PRESET, PRESETS } from './presets';
+import type { Banding, CabInput, DimFormat, FrontStyle, JobBanding, JobFronts, JobMaterials, Kind, Material, RawDefaults, SectionInput } from './engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, defaultBanding, fmt, migrateRules, parseDim } from './engine';
+import { PRESETS } from './presets';
+import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, type ShopConfig, defaultJobMaterials, defaultShopConfig, materialByName, normMaterial, normStyle, styleByName } from './shop';
 
 export interface JobInfo { name: string; client: string; catalog: string; drawn: string }
 
@@ -8,16 +9,35 @@ export interface JobInfo { name: string; client: string; catalog: string; drawn:
 export interface JobDoc {
   version: 1;
   job: JobInfo;
+  /** Construction rule overrides and hardware picks. Saw settings come from the shop at build time. */
   defaults: RawDefaults;
   cabs: CabInput[];
   dimFormat: DimFormat;
-  /** Construction preset key (see presets.ts); `defaults` holds its values plus any edits. */
+  /** Construction method key (see presets.ts); `defaults` holds its rule values plus any edits. */
   method: string;
+  /** Copies of the materials picked for the case, back and fronts, so the file stands on its own. */
+  materials: JobMaterials;
+  /** Copies of the door and drawer front styles; the drawer box type is `defaults.drawerStyle`. */
+  fronts: JobFronts;
+  /** The edge banding on case parts and on fronts: a name as typed and flat or 1 mm. */
+  banding: JobBanding;
   /** False until the setup page's "Continue to items" is pressed; new jobs open on setup. */
   setupDone: boolean;
 }
 
-export interface JobSummary { id: string; name: string; client: string; updatedAt: string }
+/** Where an order is: being entered, sent to the shop, taken in by the shop, or built and done. */
+export type JobStatus = 'draft' | 'submitted' | 'received' | 'completed';
+export const JOB_STATUS: [JobStatus, string][] = [['draft', 'Draft'], ['submitted', 'Submitted'], ['received', 'Received'], ['completed', 'Completed']];
+
+/** A row of the job list. `owner` is the username, null for jobs saved before accounts existed. */
+export interface JobSummary {
+  id: string; name: string; client: string; catalog: string; cabs: number;
+  ownerId: string | null; owner: string | null; createdAt: string; updatedAt: string;
+  status: JobStatus; submittedAt: string | null; receivedAt: string | null; completedAt: string | null;
+}
+
+const MELAMINE_34: Material = { name: '3/4 2s Melamine', thk: '3/4', w: '49', l: '97' };
+const MELAMINE_14: Material = { name: '1/4 1s Melamine', thk: '1/4', w: '49', l: '97' };
 
 export function sampleJob(): JobDoc {
   return {
@@ -30,13 +50,26 @@ export function sampleJob(): JobDoc {
       { id: 3, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '1', layout: null },
     ],
     dimFormat: 'fraction',
-    method: DEFAULT_PRESET,
+    method: PRESETS[0].key,
+    materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 }, toe: { ...MELAMINE_14 } },
+    fronts: { door: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' }, drawer: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' } },
+    banding: defaultBanding(),
     setupDone: true,
   };
 }
 
-export function emptyJob(): JobDoc {
-  return { version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults: {}, cabs: [], dimFormat: 'fraction', method: DEFAULT_PRESET, setupDone: false };
+/** A blank job on the shop's default method, materials and first hardware choices. */
+export function emptyJob(shop: ShopConfig = defaultShopConfig()): JobDoc {
+  const preset = shop.presets[0] ?? PRESETS[0];
+  const defaults: RawDefaults = { ...preset.values };
+  for (const [k] of [...HARDWARE_FIELDS, BOX_FIELD]) { const first = shop.options[k]?.[0]; if (first) defaults[k] = first; }
+  return {
+    version: 1, job: { name: '', client: '', catalog: '', drawn: '' }, defaults, cabs: [], dimFormat: 'fraction',
+    method: preset.key, materials: defaultJobMaterials(shop.materials),
+    fronts: { door: { ...(shop.doorStyles[0] ?? BUILTIN_DOOR_STYLES[0]) }, drawer: { ...(shop.drawerFrontStyles[0] ?? BUILTIN_DRAWER_FRONT_STYLES[0]) } },
+    banding: defaultBanding(),
+    setupDone: false,
+  };
 }
 
 const str = (v: unknown, fallback = '') => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : fallback);
@@ -57,41 +90,107 @@ function normSection(s: unknown): SectionInput | null {
   };
 }
 
-/** Validate untrusted JSON (imported file or request body) into a JobDoc. Throws on unusable input. */
-export function normalizeJobDoc(raw: unknown): JobDoc {
+/** Rule keys that used to live in a job's defaults and now come from its materials or the shop's saw settings. */
+const MOVED_KEYS = ['caseMat', 'backMat', 'frontMat', 'toeMat', 'caseThk', 'backThk', 'sheetL', 'sheetW', 'kerf', 'edgeTrim', 'doorStyle'] as const;
+
+/** Front styles for a job saved before they existed: its old door style name, looked up in the shop's lists. */
+function migrateFronts(defaults: RawDefaults, shop: ShopConfig): JobFronts {
+  const name = defaults.doorStyle || DEFAULTS.doorStyle;
+  const guess: FrontStyle = { name, slab: /slab/i.test(name), grain: 'Vertical' };
+  return { door: { ...(styleByName(shop.doorStyles, name) ?? guess) }, drawer: { ...(styleByName(shop.drawerFrontStyles, name) ?? guess) } };
+}
+
+/** Materials for a job saved before they existed: names, thicknesses and sheet size from its old rules. */
+function migrateMaterials(defaults: RawDefaults, shop: ShopConfig): JobMaterials {
+  const one = (name: string, thk: string | undefined): Material => {
+    const known = materialByName(shop.materials, name);
+    return {
+      name,
+      thk: thk || known?.thk || fmt(DEFAULTS.caseThk),
+      w: defaults.sheetW ?? known?.w ?? fmt(DEFAULTS.sheetW),
+      l: defaults.sheetL ?? known?.l ?? fmt(DEFAULTS.sheetL),
+    };
+  };
+  const caseName = defaults.caseMat || DEFAULTS.caseMat, backName = defaults.backMat || DEFAULTS.backMat, frontName = defaults.frontMat || DEFAULTS.frontMat;
+  return {
+    case: one(caseName, defaults.caseThk),
+    back: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
+    front: one(frontName, defaults.caseThk),
+    // Toe kick skins did not have their own material before; start from the back material.
+    toe: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
+  };
+}
+
+/**
+ * Validate untrusted JSON (imported file or request body) into a JobDoc. Throws on unusable input.
+ * `shop` supplies the construction methods (an unknown method falls back to the first one) and the
+ * materials table used to migrate jobs saved before materials were part of the job.
+ */
+export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConfig()): JobDoc {
   if (!raw || typeof raw !== 'object') throw new Error('Job file is not a JSON object.');
   const r = raw as Record<string, unknown>;
   const j = (r.job && typeof r.job === 'object' ? r.job : {}) as Record<string, unknown>;
   if (!Array.isArray(r.cabs)) throw new Error('Job file has no cabinet list.');
   const defaults: RawDefaults = {};
-  if (r.defaults && typeof r.defaults === 'object') {
-    for (const [k, v] of Object.entries(r.defaults as Record<string, unknown>)) {
-      // Rules the app no longer has (such as the old wall top height) are dropped.
-      if (!(k in DEFAULTS)) continue;
-      if (typeof v === 'string' || typeof v === 'number') (defaults as Record<string, string>)[k] = String(v);
-    }
+  const rawDefaults = (r.defaults && typeof r.defaults === 'object' ? r.defaults : {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(rawDefaults)) {
+    // Rules the app no longer has (such as the old wall top height) are dropped; renamed ones are converted below.
+    if (!(k in DEFAULTS) && k !== 'boxDeduct') continue;
+    if (typeof v === 'string' || typeof v === 'number') (defaults as Record<string, string>)[k] = String(v);
   }
+  // Materials: the job's own copies, or built from the old material/thickness/sheet rules.
+  let materials: JobMaterials | null = null;
+  if (r.materials && typeof r.materials === 'object') {
+    const m = r.materials as Record<string, unknown>;
+    const c = normMaterial(m.case), b = normMaterial(m.back), f = normMaterial(m.front);
+    // Jobs saved before the toe kick material existed use their back material for it.
+    if (c && b && f) materials = { case: c, back: b, front: f, toe: normMaterial(m.toe) ?? { ...b } };
+  }
+  if (!materials) materials = migrateMaterials(defaults, shop);
+  // The old drawer box width deduct included the case sides; the clearance is what is left after this job's case thickness.
+  migrateRules(defaults as Record<string, string>, parseDim(materials.case.thk) > 0 ? parseDim(materials.case.thk) : DEFAULTS.caseThk);
+  let fronts: JobFronts | null = null;
+  if (r.fronts && typeof r.fronts === 'object') {
+    const o = r.fronts as Record<string, unknown>;
+    const door = normStyle(o.door), drawer = normStyle(o.drawer);
+    if (door && drawer) fronts = { door, drawer };
+  }
+  if (!fronts) fronts = migrateFronts(defaults, shop);
+  const bandRaw = (r.banding && typeof r.banding === 'object' ? r.banding : {}) as Record<string, unknown>;
+  const normBanding = (v: unknown): Banding => {
+    const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+    return { name: str(o.name).trim(), thk: o.thk === '1mm' ? '1mm' : 'flat' };
+  };
+  const banding: JobBanding = { case: normBanding(bandRaw.case), front: normBanding(bandRaw.front) };
+  for (const k of MOVED_KEYS) delete defaults[k];
+
   const cabs: CabInput[] = r.cabs.map((c: unknown, i: number) => {
     const o = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
     const layout = Array.isArray(o.layout) ? o.layout.map(normSection).filter((s): s is SectionInput => !!s) : null;
     return {
       id: Number(o.id) || i + 1,
-      type: typeof o.type === 'string' && TYPES[o.type] ? o.type : 'B',
+      // Codes are kept as saved: a box that was removed from the shop's catalog still shows its code and warns when built.
+      type: str(o.type).trim() || shop.catalog.types[0]?.code || 'B',
       w: str(o.w), h: str(o.h), d: str(o.d), toe: str(o.toe, '0'), qty: str(o.qty, '1'),
       layout: layout && layout.length ? layout : null,
+      ...(o.finished === true ? { finished: true } : {}),
     };
   });
   // Ids must be unique for row keys and selection.
   const seen = new Set<number>();
   let next = Math.max(0, ...cabs.map(c => c.id)) + 1;
   for (const c of cabs) { if (seen.has(c.id)) c.id = next++; seen.add(c.id); }
+  const presets = shop.presets;
   return {
     version: 1,
     job: { name: str(j.name, 'Untitled job'), client: str(j.client), catalog: str(j.catalog), drawn: str(j.drawn) },
     defaults,
     cabs,
     dimFormat: r.dimFormat === 'decimal' ? 'decimal' : 'fraction',
-    method: PRESETS.some(p => p.key === r.method) ? (r.method as string) : DEFAULT_PRESET,
+    method: presets.some(p => p.key === r.method) ? (r.method as string) : (presets[0]?.key ?? PRESETS[0].key),
+    materials,
+    fronts,
+    banding,
     // Jobs saved before setup existed have no flag: treat them as set up.
     setupDone: r.setupDone !== false,
   };

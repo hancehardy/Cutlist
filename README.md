@@ -11,12 +11,39 @@ npm test           # engine tests (numbers checked against the 3DB15 sample pack
 npm run build && npm start
 ```
 
+- **Accounts:** the first visit asks you to create an account, which becomes the shop **admin** and takes over any jobs already saved. Anyone can sign up afterwards; a user sees only their own jobs, an admin sees every job, the Admin page and its Users tab (roles, password resets, deletes). Passwords are hashed with scrypt; sessions are a 30-day httpOnly cookie. Sign out from the top bar.
 - **Data:** jobs autosave to SQLite at `data/cutlist.db` (override with `CUTLIST_DB=/path/file.db`). A new database is seeded with the 3DB15 sample job.
-- **Job setup page:** new jobs start here: job details, construction method (frameless presets in `src/lib/presets.ts`), materials and hardware (dropdowns with Other…) and construction rules. **Continue to items** opens item entry; **Edit setup** on the job summary card returns to it.
-- **Jobs menu** (next to the title): switch jobs, new / new from sample, import and export `.cutlist.json`, fraction or decimal dimensions, delete.
-- **Code map:** `src/lib/engine.ts` construction rules and report math · `src/lib/job.ts` job document + import validation · `src/lib/presets.ts` construction presets and dropdown choices · `src/lib/db.ts` SQLite · `src/app/api/jobs` REST API · `src/components` UI.
+- **Job setup page:** new jobs start here: job details, construction method and its rules, case, back, front and toe kick materials (from the Admin table, or Other… with its own thickness and sheet size; toe kick is what toe kick skins are cut from) (what toe kick skins are cut from), fronts (door front style, drawer front style with grain direction, drawer box type; only slab styles are cut and optimized, other styles are ordered and only listed on the door list) and hardware (dropdowns with Other…). **Continue to items** opens item entry; **Edit setup** on the job summary card returns to it.
+- **Accessories:** the Accessory category holds cut panels rather than boxes: filler, end panel and toe kick skin out of the box, each a single panel of width x height in a chosen job material with its own grain and edge banding (no construction method, faces or hardware). Add more under Admin › Cabinet boxes with the Accessory category, or give any new category the \"one cut panel\" construction style.
+- **Cabinet list:** one cabinet per row; accessories alone have a quantity. **Duplicate** adds a copy of a row (faces included) right below it. **Finished interior** on a row cuts that cabinet's case from the job's front material and its back from the 1/4" material whose name matches the front material (3/4 Prefinished Maple Ply → 1/4 Prefinished Maple Ply); with no match the back keeps the job's back material and the cabinet says so.
+- **Configure tab:** click a face in the drawing to edit it; **Save as box…** stores the cabinet's faces and size as a new box in the shop catalog (and can switch the cabinet onto it) so the configuration can be reused on later jobs.
+- **Reports and printing:** the Cut list and Optimize tabs are visible to admins only; everyone sees Cabinet list (every order line, cabinets and accessories, with size, quantity, fronts and notes), Doors, Drawers, Assembly, Sheets and Hardware. The **Print** menu prints the report on screen, a checked set of reports, or the whole packet, one report per page.
+- **Sheets tab:** full sheets of each material the job needs, totalled from the panel saw plans, with parts placed, yield and estimated lineal feet of edge banding (fronts all round; the exposed edge of ends, decks, tops, shelves, partitions and stretchers); parts too large for the sheet are called out. The estimate is split between case parts and doors/drawer fronts, each with the edge banding product named on the job setup page (Materials section: a name and flat or 1 mm for the case and for the fronts).
+- **Orders:** a job is a draft while it is entered. The owner presses **Submit job** on the job page to send it to the shop; the order is then read-only for them until they **Withdraw** it. Admins see a **new orders** badge in the top bar and on the home page, a New orders filter in the job history, and **Mark received** on the job or **Receive** in the history. Once processed, an admin marks the order **Completed** (on the job or in the history); received and completed orders can be reopened to draft.
+- **Home** (`/`): after sign-in, a greeting, quick actions (New job, Continue your last job, Job history, Admin for admins) and your recent jobs. Jobs open at `/job/<id>`.
+- **Jobs** (the button next to the title) offers New job and Job history. The history at `/jobs` is a searchable list of your jobs with client, catalog, cabinet count and dates: open, delete, new, new from sample or import a `.cutlist.json` there. Admins see every job with a per-user filter. Fraction or decimal dimensions and Export are on the job setup page.
+- **Admin page** (`/admin`, linked from the top bar): the materials table (name, thickness, sheet width and length), the door and drawer front styles (slab or ordered, grain for drawer fronts), the drawer box types and hardware dropdown choices, the panel saw settings (kerf, edge trim), the construction methods (rules only), and the cabinet boxes: categories (each with a case construction style: base, wall, tall or a single cut panel) and the box types in them, with a code, default size, picker image, standard faces and **case parts**: every part of the case in a list (ends, back, deck, top, nailers, stretchers, partitions, shelves and any parts you add), each with on/off, quantity (a number, `auto` or `auto+1`), width and length as a named dimension or simple arithmetic (`faceA + 3/4`, `inW - 1/2`, `inW + 2*backGroove`), grain, which job material it cuts from (a finished interior cuts from the front material) and which edges are banded. Sink bases ship with a sink skirt 3/4" taller than the false front in place of the drawer stretcher. Saved to the same database. A job copies its method rules, materials and hardware when it is set up; saw settings apply to every job live.
+- **Code map:** `src/lib/engine.ts` construction rules, built-in cabinet catalog and report math · `src/lib/job.ts` job document + import validation · `src/lib/presets.ts` built-in method and hardware choices · `src/lib/shop.ts` shop settings document (materials, choices, saw, methods) · `src/lib/db.ts` SQLite (jobs, settings, users, sessions) · `src/lib/auth.ts` session cookie helpers · `src/lib/password.ts` hashing · `src/app/api/jobs`, `src/app/api/shop`, `src/app/api/auth`, `src/app/api/users` REST API · `src/components` UI, `src/components/admin` admin page.
 
 ---
+
+## Deploying
+
+The app is a single Node server with a SQLite file, so it needs a host with a **persistent disk**. Render fits;
+Vercel's filesystem is wiped on every deploy, so it would lose the data unless the storage were moved to a hosted database.
+
+**Render (Blueprint).** `render.yaml` describes the service: Node 22, `npm ci && npm run build`, `npm start`, one
+instance on the Starter plan, a 1 GB disk at `/var/data`, and `CUTLIST_DB=/var/data/cutlist.db`.
+
+1. Merge to `main`; the Blueprint deploys that branch.
+2. In Render: **New → Blueprint**, pick the repository, accept the plan. Render creates the service and disk and runs the first deploy.
+3. Open the service URL **before sharing it**: the first account created becomes the admin. Then set up materials, methods and boxes on the Admin page.
+4. Invite testers to sign up at the URL. Manage them from Admin › Users.
+
+Notes: `next start` reads Render's `PORT`; `NODE_ENV=production` makes the session cookie secure. Sign-up is open to
+anyone with the URL and there is no login rate limiting, which is fine for a closed test. To back up, download
+`cutlist.db` from the disk (Render's shell: `cat /var/data/cutlist.db`, or a disk snapshot on plans that have them)
+before upgrades. Any other host works the same way: set `CUTLIST_DB` to a path on persistent storage and run one instance.
 
 # CODING AGENTS: READ THIS FIRST
 

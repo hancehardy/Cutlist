@@ -1,7 +1,7 @@
-import { elevShapes, type Fmt, type JobResult, type Kind, type SawCut } from '@/lib/engine';
+import { bandThkLabel, elevShapes, sheetTotals, type Banding, type Fmt, type JobBanding, type JobResult, type Kind, type SawCut } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 
-export interface ReportCtx { r: JobResult; f: Fmt; job: JobInfo; today: string; headerTxt: string; footerTxt: string }
+export interface ReportCtx { r: JobResult; f: Fmt; job: JobInfo; banding: JobBanding; today: string; headerTxt: string; footerTxt: string }
 
 const faceFill = (k: Kind) => (k === 'drawer' ? 'var(--color-drawer)' : k === 'false' ? 'var(--color-line-2)' : k === 'open' ? 'none' : '#fff');
 
@@ -30,13 +30,13 @@ function Table({ cols, heads, rows, small, className = 'mt-3' }: {
   );
 }
 
-export function CutListReport({ r, headerTxt, footerTxt }: ReportCtx) {
+export function CutListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
   return (
     <>
       {r.materials.map(m => (
         <Card key={m.name} title="Panel Stock Cut List" sub={headerTxt}>
           <div className="mt-3.5 text-base font-bold text-link">{m.name}</div>
-          <div className="mt-0.5 text-xs text-muted">Grain called on every part. Vertical = along Length. Kerf {r.d.kerf}&quot;. Band blank — mill to confirm L/R/T/B.</div>
+          <div className="mt-0.5 text-xs text-muted">Grain called on every part. Vertical = along Length. Kerf {f(r.d.kerf)}&quot;. Band blank — mill to confirm L/R/T/B.</div>
           <Table cols="44px minmax(120px,2fr) minmax(110px,1.4fr) minmax(90px,1.2fr) minmax(80px,1fr)"
             heads={['Qty', 'Description', 'Width x Length', 'Grain', 'Cabinet (Qty)']}
             rows={m.rows.map((row, i) => ({ key: i, cells: [
@@ -55,12 +55,15 @@ export function CutListReport({ r, headerTxt, footerTxt }: ReportCtx) {
 export function DoorListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
   return (
     <Card title="Door List" sub={headerTxt}>
-      <div className="mt-2 text-[13px] text-ink-3">{r.d.doorStyle} · Outside edge: none · Panel: slab · Grain: vertical (along height)</div>
+      <div className="mt-2 flex flex-col gap-0.5 text-[13px] text-ink-3">
+        <div><span className="font-semibold text-ink">Doors</span> {r.d.doorStyle} · {r.d.fronts.doorSlab ? 'slab, cut in shop' : 'ordered out — not on the cut list or sheet plans'} · grain vertical (along height)</div>
+        <div><span className="font-semibold text-ink">Drawer and false fronts</span> {r.d.fronts.drawerFrontStyle} · {r.d.fronts.drawerSlab ? 'slab, cut in shop' : 'ordered out — not on the cut list or sheet plans'} · grain {r.d.fronts.drawerGrain === 'Horizontal' ? 'horizontal (along width)' : 'vertical (along height)'}</div>
+      </div>
       <Table cols="44px minmax(120px,1.6fr) minmax(90px,1fr) minmax(90px,1fr) minmax(80px,1fr)"
         heads={['Qty', 'Width x Height', 'Type', 'Grain', 'Cab (Qty)']}
         rows={r.doors.map((row, i) => ({ key: i, cells: [
           { v: row.qty, c: 'font-bold' }, { v: row.size, c: 'font-semibold tabular-nums' }, { v: row.type },
-          { v: 'Vertical (along L)', c: 'text-ink-3' }, { v: row.cabsTxt, c: 'text-ink-3' },
+          { v: `${row.grain === 'Vertical' ? 'Vertical (along L)' : 'Horizontal (along W)'}${row.cut ? '' : ' · ordered'}`, c: 'text-ink-3' }, { v: row.cabsTxt, c: 'text-ink-3' },
         ] }))} />
       <div className="mt-2.5 text-xs text-muted">DF = drawer front · DR = door · FF = false front. Front width = cabinet width − {f(2 * r.d.sideReveal)}.</div>
       <Footer>{footerTxt}</Footer>
@@ -78,7 +81,7 @@ export function DrawerListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
           { v: row.kind }, { v: row.qty, c: 'font-bold' }, { v: row.wTxt, c: 'font-semibold' }, { v: row.dTxt, c: 'font-semibold' },
           { v: row.hTxt, c: 'font-semibold' }, { v: row.cabsTxt, c: 'text-ink-3' },
         ] }))} />
-      <div className="mt-2.5 text-xs text-muted">Box width = cabinet width − {f(r.d.boxDeduct)}. Depth = longest {r.d.glideSeries} glide that fits cabinet depth − {f(r.d.glideDeduct)}.</div>
+      <div className="mt-2.5 text-xs text-muted">Box width = opening between the case sides − {f(r.d.glideClear)} guide clearance. Depth = longest {r.d.glideSeries} glide that fits cabinet depth − {f(r.d.glideDeduct)}.</div>
       <Footer>{footerTxt}</Footer>
     </Card>
   );
@@ -89,7 +92,7 @@ export function AssemblySheets({ r, f, job, today }: ReportCtx) {
   const partHeads = ['Qty', 'W', 'L', 'Description', 'Grain', 'Material'];
   return (
     <>
-      {r.cabs.filter(c => !c.bad).map(c => {
+      {r.cabs.filter(c => !c.bad && !c.panel).map(c => {
         const pad = Math.max(c.W, c.boxH) * 0.14, fs = Math.max(c.W, c.boxH) / 22, dimX = -pad * 0.5;
         const sizeTxt = `${f(c.W)} x ${f(c.H)} x ${f(c.D)}`;
         const partRows = (ps: typeof c.parts) => ps.map((p, i) => ({ key: i, cells: [
@@ -116,8 +119,8 @@ export function AssemblySheets({ r, f, job, today }: ReportCtx) {
                 <div><span className="text-muted">Qty</span> {c.qty}</div>
                 <div><span className="text-muted">Toe height</span> {f(c.toe)}</div>
                 <div><span className="text-muted">Toe recess</span> {f(r.d.toeRecess)}</div>
-                <div><span className="text-muted">Back / Ends</span> Unfinished</div>
-                <div className="col-span-full"><span className="text-muted">Back</span> {f(r.d.backThk)}&quot; captured in {f(r.d.backGroove)}&quot; grooves all four sides, set in {f(r.d.backInset)}&quot; from the rear</div>
+                <div><span className="text-muted">Back / Ends</span> {c.finished ? `Finished interior · ${r.d.frontMat}` : 'Unfinished'}</div>
+                <div className="col-span-full"><span className="text-muted">Back</span> {f(c.finished && r.d.finishedBack ? r.d.finishedBack.thk : r.d.backThk)}&quot; {c.finished && r.d.finishedBack ? `(${r.d.finishedBack.name}) ` : ''}captured in {f(r.d.backGroove)}&quot; grooves all four sides, set in {f(r.d.backInset)}&quot; from the rear</div>
                 <div><span className="text-muted">Scribe / Stile</span> 0</div>
                 <div className="col-span-full text-muted">{c.toe > 0 ? 'Toe is a separate assembly — box height excludes toe.' : 'No toe kick — floor-set box.'}</div>
               </div>
@@ -183,7 +186,7 @@ export function OptimizeSheets({ r, f, headerTxt, footerTxt }: ReportCtx) {
             })}
           </svg>
           <div className="mt-2 text-xs text-muted">
-            Panel saw: rip full-length strips along the {f(n.L)}&quot; grain, then crosscut each strip. Sheet {f(n.L)} x {f(n.W)}, kerf {r.d.kerf}&quot;
+            Panel saw: rip full-length strips along the {f(n.L)}&quot; grain, then crosscut each strip. Sheet {f(n.L)} x {f(n.W)}, kerf {f(r.d.kerf)}&quot;
             {n.trim > 0 ? `, ${f(n.trim)}" trimmed off one long and one short edge (grey)` : ''}. Parts are never rotated: → = grain runs with the sheet, ↕ = across. {s.yieldTxt}. Unshaded = offcut.
           </div>
           <div className="mt-4 text-[13px] font-bold text-link">Cut sequence</div>
@@ -214,6 +217,72 @@ export function HardwareReport({ r, headerTxt, footerTxt }: ReportCtx) {
     <Card title="Hardware List" sub={headerTxt}>
       <Table cols="44px minmax(140px,1fr) minmax(160px,1.4fr)" heads={['Qty', 'Item', 'Spec']}
         rows={r.hardware.map((h, i) => ({ key: i, cells: [{ v: h.qty, c: 'font-bold' }, { v: h.item }, { v: h.spec, c: 'text-ink-3' }] }))} />
+      <Footer>{footerTxt}</Footer>
+    </Card>
+  );
+}
+
+/** Full sheets of each material to pull for the job, from the panel saw plans. */
+export function SheetSummaryReport({ r, f, banding, headerTxt, footerTxt }: ReportCtx) {
+  const rows = sheetTotals(r.sawPlans, r.materials);
+  const sheets = rows.reduce((n, x) => n + x.sheets, 0), parts = rows.reduce((n, x) => n + x.parts, 0), band = rows.reduce((n, x) => n + x.bandLf, 0);
+  const lf = (n: number) => `${n.toFixed(1)} lf`;
+  const bandRows: [string, Banding, number][] = [['Case parts', banding.case, r.bandLf.case], ['Doors and drawer fronts', banding.front, r.bandLf.front]];
+  const oversize = r.sawPlans.flatMap(p => p.oversize.map(o => `${o.name} ${f(o.along)} x ${f(o.across)} (${p.name})`));
+  return (
+    <Card title="Sheet Material Summary" sub={headerTxt}>
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{sheets}</span> <span className="text-sm text-muted">sheet{sheets === 1 ? '' : 's'} total</span></div>
+        <div className="text-[13px] text-muted">{rows.length} material{rows.length === 1 ? '' : 's'} · {parts} parts placed</div>
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{band.toFixed(0)}</span> <span className="text-sm text-muted">lf edge banding, estimated</span></div>
+      </div>
+      <Table cols="minmax(150px,1.4fr) minmax(150px,2fr) minmax(70px,0.7fr) minmax(90px,0.9fr)" heads={['Edge banding', 'Product', 'Thickness', 'Lineal feet']}
+        rows={bandRows.map(([on, b, n]) => ({ key: on, cells: [{ v: on, c: 'font-semibold' }, { v: b.name || '—', c: b.name ? '' : 'text-muted' }, { v: bandThkLabel(b.thk) }, { v: lf(n), c: 'font-bold tabular-nums' }] }))} />
+      <div className="mt-1 text-xs text-muted">
+        Sheets are counted from the panel saw plans on the Optimize tab: kerf {f(r.d.kerf)}&quot;, {f(r.d.edgeTrim)}&quot; trimmed off one long and one short edge, parts never rotated. Yield is the share of the sheets covered by parts.
+        Edge banding counts all four edges of doors, drawer fronts and false fronts, and the exposed edge of ends, decks, tops, shelves, partitions and stretchers; backs and nailers are not banded. Add your usual overage.
+      </div>
+      <Table cols="minmax(150px,2fr) minmax(90px,1fr) minmax(64px,0.7fr) minmax(64px,0.7fr) minmax(64px,0.7fr) minmax(90px,0.9fr)" heads={['Material', 'Sheet size', 'Sheets', 'Parts', 'Yield', 'Edge banding']}
+        rows={[
+          ...rows.map(x => ({ key: x.name, cells: [{ v: x.name, c: 'font-semibold' }, { v: `${f(x.W)} x ${f(x.L)}` }, { v: x.sheets, c: 'font-bold tabular-nums' }, { v: x.parts, c: 'tabular-nums' }, { v: `${x.yieldPct.toFixed(1)}%`, c: 'tabular-nums' }, { v: lf(x.bandLf), c: 'tabular-nums' }] })),
+          { key: '__total', cells: [{ v: 'Total', c: 'font-bold' }, { v: '' }, { v: sheets, c: 'font-bold tabular-nums' }, { v: parts, c: 'tabular-nums' }, { v: '' }, { v: lf(band), c: 'font-bold tabular-nums' }] },
+        ]} />
+      {oversize.length > 0 && (
+        <div className="mt-3 rounded-lg bg-err-bg px-3 py-2 text-xs text-err">
+          Not on any sheet (larger than the trimmed sheet): {oversize.join(' · ')}. Add stock for these by hand.
+        </div>
+      )}
+      <Footer>{footerTxt}</Footer>
+    </Card>
+  );
+}
+
+/** Every line of the order, cabinets and accessories alike, with size, quantity, fronts and notes. */
+export function CabinetListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
+  const cabs = r.cabs;
+  const boxes = cabs.filter(c => !c.panel).length, panels = cabs.filter(c => c.panel).reduce((n, c) => n + c.qty, 0);
+  const frontsTxt = (c: typeof cabs[number]) => {
+    const n = (k: string) => c.fronts.filter(fr => fr.desc.startsWith(k)).reduce((a, fr) => a + fr.qty, 0);
+    const d = n('Door'), df = n('Drawer Front'), ff = n('False Front');
+    return [d && `${d} door${d === 1 ? '' : 's'}`, df && `${df} drawer front${df === 1 ? '' : 's'}`, ff && `${ff} false front${ff === 1 ? '' : 's'}`].filter(Boolean).join(', ') || '—';
+  };
+  const notes = (c: typeof cabs[number]) => [c.bad && 'size incomplete', c.custom && !c.panel && 'custom faces', c.warn].filter(Boolean).join(' · ');
+  return (
+    <Card title="Cabinet List" sub={headerTxt}>
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{boxes}</span> <span className="text-sm text-muted">cabinet{boxes === 1 ? '' : 's'}</span></div>
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{panels}</span> <span className="text-sm text-muted">accessor{panels === 1 ? 'y' : 'ies'}</span></div>
+        <div className="text-[13px] text-muted">{cabs.length} line{cabs.length === 1 ? '' : 's'} in order</div>
+      </div>
+      <Table cols="36px 80px minmax(150px,1.6fr) minmax(130px,1.2fr) 44px minmax(120px,1.2fr) minmax(100px,1fr)"
+        heads={['#', 'Code', 'Type', 'Size (W x H x D)', 'Qty', 'Fronts', 'Notes']}
+        rows={cabs.map(c => ({ key: c.idx, cells: [
+          { v: c.idx, c: 'font-bold' }, { v: c.code, c: 'font-semibold' },
+          { v: `${c.catLabel} · ${c.typeLabel}${c.finished ? ' · finished interior' : ''}` },
+          { v: c.bad ? '—' : c.panel ? `${f(c.W)} x ${f(c.H)}` : `${f(c.W)} x ${f(c.H)} x ${f(c.D)}${c.toe ? ` · toe ${f(c.toe)}` : ''}`, c: 'tabular-nums' },
+          { v: c.qty, c: 'tabular-nums' }, { v: c.panel ? 'panel' : frontsTxt(c), c: 'text-ink-3' }, { v: notes(c) || '', c: 'text-ink-3' },
+        ] }))} />
+      <div className="mt-2.5 text-xs text-muted">Sizes in inches. Accessories are single cut panels; their quantity multiplies the part.</div>
       <Footer>{footerTxt}</Footer>
     </Card>
   );

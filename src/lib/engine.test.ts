@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildJob, fmt, newSection, parseDim } from './engine';
+import { BUILTIN_CATALOG, SINK_SKIRT, addCasePart, buildJob, defaultCaseParts, defaultLayout, evalDim, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, resolveQty, finishedBackFor, sheetTotals, type CabCatalog, type CabInput, type CasePart } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
-import { isCustomized, presetFor } from './presets';
+import { PRESETS, isCustomized, type Preset } from './presets';
+import { BUILTIN_MATERIALS, defaultShopConfig } from './shop';
 
 describe('parseDim / fmt', () => {
   it('parses fractions, mixed numbers and decimals', () => {
@@ -33,6 +34,13 @@ describe('3DB15 sample packet', () => {
     expect(part('Top Stretcher').qty).toBe(2);
     expect([part('Nailer').w, part('Nailer').l]).toEqual([4, 13.5]);
     expect(part('Drawer Stretcher').qty).toBe(1);
+  });
+
+  it('drawer box width is the opening less the guide clearance; a wider clearance narrows the box', () => {
+    // 13 1/2 opening − 7/16 = 13 1/16 by default (the old 1 15/16 deduct less two 3/4 sides).
+    expect(fmt(job.drawers[0].w)).toBe('13 1/16');
+    const wide = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], { glideClear: '1/2' });
+    expect(fmt(wide.drawers[0].w)).toBe('13');
   });
 
   it('matches the drawer fronts in the PDF', () => {
@@ -117,9 +125,10 @@ describe('normalizeJobDoc', () => {
   });
   it('rejects non-jobs and repairs duplicate ids', () => {
     expect(() => normalizeJobDoc({})).toThrow();
-    const doc = normalizeJobDoc({ cabs: [{ id: 1, type: 'XX' }, { id: 1, type: 'W' }] });
-    expect(doc.cabs.map(c => c.id)).toEqual([1, 2]);
-    expect(doc.cabs[0].type).toBe('B');
+    const doc = normalizeJobDoc({ cabs: [{ id: 1, type: 'XX' }, { id: 1, type: 'W' }, { id: 3 }] });
+    expect(doc.cabs.map(c => c.id)).toEqual([1, 4, 3]);
+    // Unknown codes are kept (the box may come back in the catalog); a missing one gets the first box.
+    expect(doc.cabs.map(c => c.type)).toEqual(['XX', 'W', 'B']);
   });
 });
 
@@ -136,19 +145,52 @@ describe('job setup', () => {
     expect(isCustomized(doc.method, normalizeJobDoc({ cabs: [], defaults: { wallTop: '84' } }).defaults)).toBe(false);
   });
 
-  it('falls back to the standard preset for unknown methods', () => {
-    expect(normalizeJobDoc({ cabs: [], method: 'face-frame' }).method).toBe('frameless-melamine');
-    expect(normalizeJobDoc({ cabs: [], method: 'frameless-ply' }).method).toBe('frameless-ply');
+  const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
+  const shop = { ...defaultShopConfig(), presets: [PRESETS[0], thin] };
+
+  it('falls back to the standard method for unknown methods', () => {
+    expect(normalizeJobDoc({ cabs: [], method: 'face-frame' }).method).toBe('frameless');
+    expect(normalizeJobDoc({ cabs: [], method: 'thin' }, shop).method).toBe('thin');
+    expect(normalizeJobDoc({ cabs: [], method: 'thin' }).method).toBe('frameless');
   });
 
-  it('detects edits away from the chosen preset', () => {
-    expect(isCustomized('frameless-melamine', {})).toBe(false);
-    expect(isCustomized('frameless-ply', { ...presetFor('frameless-ply').values })).toBe(false);
-    expect(isCustomized('frameless-ply', {})).toBe(true);
-    expect(isCustomized('frameless-melamine', { pull: 'Knob' })).toBe(true);
+  it('detects edits to the construction rules, and only those', () => {
+    expect(isCustomized('frameless', {})).toBe(false);
+    expect(isCustomized('thin', { ...thin.values }, shop.presets)).toBe(false);
+    expect(isCustomized('thin', {}, shop.presets)).toBe(true);
+    // Hardware is not part of a method.
+    expect(isCustomized('frameless', { pull: 'Knob' })).toBe(false);
     // Typing the shop-standard value back in is not a customization.
-    expect(isCustomized('frameless-melamine', { kerf: '0.187', caseThk: '3/4' })).toBe(false);
-    expect(isCustomized('frameless-melamine', { caseThk: '5/8' })).toBe(true);
+    expect(isCustomized('frameless', { stretcherW: '4' })).toBe(false);
+    expect(isCustomized('frameless', { stretcherW: '3' })).toBe(true);
+  });
+});
+
+describe('materials', () => {
+  const cab = { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' };
+  const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
+
+  it('takes case and back thickness from the materials', () => {
+    const job = buildJob([cab], {}, 'fraction', { case: M('Ply', '0.71'), back: M('Thin', '1/2'), front: M('Ply', '0.71'), toe: M('Thin', '1/2') });
+    expect([job.d.caseThk, job.d.backThk]).toEqual([0.71, 0.5]);
+    expect(job.cabs[0].parts.find(p => p.desc === 'Deck')!.l).toBeCloseTo(15 - 2 * 0.71);
+    expect(job.materials.map(m => m.name)).toEqual(['Thin', 'Ply']);
+    // Bad dimensions fall back to the app defaults.
+    expect(buildJob([cab], {}, 'fraction', { case: M('Ply', 'x'), back: M('Thin', '0'), front: M('Ply', ''), toe: M('Thin', '0') }).d.caseThk).toBe(0.75);
+  });
+
+  it('plans each material on its own sheet; the case wins a name clash', () => {
+    const job = buildJob([cab], {}, 'fraction', { case: M('A', '3/4'), back: M('B', '1/4', '60', '60'), front: M('A', '3/4', '48', '96'), toe: M('B', '1/4', '60', '60') });
+    const plan = (n: string) => job.sawPlans.find(p => p.name === n)!;
+    expect([plan('B').L, plan('B').W]).toEqual([60, 60]);
+    expect([plan('A').L, plan('A').W]).toEqual([97, 49]);
+    expect(plan('B').sheets[0].title).toContain('(60 x 60)');
+  });
+
+  it('means 3/4 and 1/4 melamine on 49 x 97 when a job has none', () => {
+    const job = buildJob([cab], {});
+    expect(job.d.sheets).toEqual({});
+    expect(job.sawPlans.map(p => [p.name, p.L, p.W])).toEqual([['1/4 1s Melamine', 97, 49], ['3/4 2s Melamine', 97, 49]]);
   });
 });
 
@@ -244,5 +286,378 @@ describe('panel saw optimizer', () => {
   it('flags parts larger than the trimmed sheet', () => {
     const p = plan([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }]);
     expect(p.flatMap(x => x.oversize.map(o => o.name))).toContain('Unfinished Left End');
+  });
+});
+
+describe('cabinet catalog', () => {
+  const d = resolveDefaults();
+  const cab = (type: string, h = '30', catalog?: CabCatalog) =>
+    buildJob([{ id: 1, type, w: '30', h, d: '12', toe: '0', qty: '1' }], {}, 'fraction', null, catalog).cabs[0];
+
+  it('keeps the standard layouts of the built-in boxes', () => {
+    expect(defaultLayout('B', d, 34.5).map(s => [s.kind, s.h, s.shelves])).toEqual([['drawer', d.smallFront, 0], ['door', '', 1]]);
+    expect(defaultLayout('T', d, 84).map(s => [s.kind, s.h, s.shelves])).toEqual([['door', '', 3], ['door', d.tallLowerDoor, 1]]);
+    expect(defaultLayout('SB', d, 34.5).map(s => s.kind)).toEqual(['false', 'door']);
+    // Wall boxes get one shelf under 30" and two from 30".
+    expect(defaultLayout('W', d, 24)[0].shelves).toBe(1);
+    expect(defaultLayout('W', d, 30)[0].shelves).toBe(2);
+    expect(defaultLayout('WO', d, 42)[0].shelves).toBe(2);
+  });
+
+  it('builds the case from the category style, not the category name', () => {
+    const catalog: CabCatalog = {
+      categories: [{ key: 'upper', label: 'Uppers', style: 'wall' }, { key: 'larder', label: 'Larders', style: 'tall' }, { key: 'low', label: 'Lows', style: 'base' }],
+      types: [
+        { code: 'U', cat: 'upper', label: 'Upper', img: '', h: '30', d: '12', toe: '0', faces: [newFace('door', '', { shelves: 2 })] },
+        { code: 'L', cat: 'larder', label: 'Larder', img: '', h: '84', d: '24', toe: '4 1/2', faces: [newFace('door')] },
+        { code: 'LD', cat: 'low', label: 'Low drawers', img: '', h: '34 1/2', d: '24', toe: '4 1/2', faces: [newFace('drawer', '8'), newFace('drawer')] },
+      ],
+    };
+    const names = (c: ReturnType<typeof cab>) => c.parts.map(p => `${p.qty} ${p.desc}`);
+    expect(names(cab('U', '30', catalog))).toEqual(expect.arrayContaining(['1 Bottom', '1 Top', '2 Nailer']));
+    expect(names(cab('U', '30', catalog))).not.toContain('2 Top Stretcher');
+    expect(names(cab('L', '84', catalog))).toEqual(expect.arrayContaining(['1 Deck', '1 Top', '1 Nailer']));
+    const low = cab('LD', '34 1/2', catalog);
+    expect(names(low)).toEqual(expect.arrayContaining(['1 Deck', '2 Top Stretcher', '1 Nailer']));
+    // A fixed face height is a plain dimension.
+    expect(low.sections[0].h).toBe(8);
+    expect(low.cat).toBe('low');
+    expect(low.catLabel).toBe('Lows');
+  });
+
+  it('warns about a box that is not in the catalog and builds it as the first box', () => {
+    const c = cab('ZZ');
+    expect(c.warn).toContain('Unknown cabinet type ZZ');
+    expect(c.label).toContain(BUILTIN_CATALOG.types[0].label);
+    expect(cab('W').warn).toBe('');
+  });
+});
+
+describe('saving a job cabinet\'s faces as a box', () => {
+  const d = resolveDefaults();
+
+  it('turns configured sections into box faces, keeping rule heights as rules', () => {
+    const layout = [
+      newSection('drawer', '6 3/16'),            // equals the top drawer front rule
+      newSection('door', '', { shelves: 2, rollouts: 1, hinge: 'R' }),
+      newSection('drawer', '7 1/2', { split: 2 }),
+      newSection('open', '', { shelves: 1 }),
+    ];
+    const faces = facesFromSections(layout, d);
+    expect(faces.map(f => f.h)).toEqual(['smallFront', '', '7 1/2', '']);
+    expect(faces[1]).toMatchObject({ kind: 'door', split: 0, shelves: 2, rollouts: 1, hinge: 'R' });
+    expect(faces[2]).toMatchObject({ kind: 'drawer', split: 2, shelves: 0, rollouts: 0 });
+    // Round trip: resolving the saved faces gives the same sections back.
+    expect(resolveFaces(faces, d, 34.5).map(s => [s.kind, s.h, s.split, s.shelves])).toEqual([
+      ['drawer', d.smallFront, 1, 0], ['door', '', 0, 2], ['drawer', 7.5, 2, 0], ['open', '', 1, 1],
+    ]);
+    // A method with a different top drawer height moves the saved drawer with it.
+    expect(resolveFaces(faces, resolveDefaults({ smallFront: '7' }), 34.5)[0].h).toBe(7);
+  });
+
+  it('keeps auto shelves while the count still matches, when editing a box in Admin', () => {
+    const prev = [newFace('door', '', { shelves: 'auto' })];
+    const layout = resolveFaces(prev, d, 30).map(s => ({ ...s, h: '' as const, rollouts: 2 }));
+    expect(facesFromSections(layout, d, { prev, H: 30 })[0]).toMatchObject({ shelves: 'auto', rollouts: 2 });
+    // Changing the count makes it a fixed number; without the previous faces it is always a number.
+    expect(facesFromSections(layout.map(s => ({ ...s, shelves: 3 })), d, { prev, H: 30 })[0].shelves).toBe(3);
+    expect(facesFromSections(layout, d)[0].shelves).toBe(2);
+  });
+
+  it('builds the same cabinet from the saved box as from the custom layout', () => {
+    const layout = [newSection('false', '6 3/16'), newSection('door', '', { shelves: 1, rollouts: 2 })];
+    const custom = buildJob([{ id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1', layout }], {}).cabs[0];
+    const catalog: CabCatalog = { ...BUILTIN_CATALOG, types: [...BUILTIN_TYPES_WITH({ code: 'B-C', cat: 'base', label: 'Saved', img: '', h: '34 1/2', d: '24', toe: '4 1/2', faces: facesFromSections(layout, d) })] };
+    const saved = buildJob([{ id: 1, type: 'B-C', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1' }], {}, 'fraction', null, catalog).cabs[0];
+    expect(saved.parts).toEqual(custom.parts);
+    expect(saved.fronts).toEqual(custom.fronts);
+    expect(saved.drawers).toEqual(custom.drawers);
+    expect(saved.hardware).toEqual(custom.hardware);
+  });
+});
+const BUILTIN_TYPES_WITH = (t: CabCatalog['types'][number]) => [...BUILTIN_CATALOG.types, t];
+
+describe('sheet material summary', () => {
+  it('totals the sheets of each material from the saw plans', () => {
+    const job = buildJob([
+      { id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' },
+      { id: 2, type: 'W', w: '30', h: '30', d: '12', toe: '0', qty: '4' },
+    ], {});
+    const t = sheetTotals(job.sawPlans);
+    expect(t.map(x => [x.name, x.sheets])).toEqual(job.sawPlans.map(p => [p.name, p.sheets.length]));
+    expect(t.reduce((n, x) => n + x.sheets, 0)).toBe(job.summary.sheets);
+    // Every placed part is counted once, on a 97 x 49 sheet, with a sane yield.
+    expect(t.reduce((n, x) => n + x.parts, 0)).toBe(job.summary.nParts);
+    for (const x of t) { expect([x.L, x.W]).toEqual([97, 49]); expect(x.yieldPct).toBeGreaterThan(0); expect(x.yieldPct).toBeLessThanOrEqual(100); expect(x.oversize).toBe(0); }
+  });
+
+  it('splits the lineal feet between case parts and fronts', () => {
+    const job = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {});
+    const cab = job.cabs[0];
+    const sum = (ps: { qty: number; band: number }[]) => ps.reduce((a, p) => a + p.qty * p.band, 0) / 12;
+    expect(job.bandLf.case).toBeCloseTo(sum(cab.parts));
+    expect(job.bandLf.front).toBeCloseTo(sum(cab.fronts));
+    // Ends, deck, two top stretchers and the drawer stretcher: 30 + 30 + 13.5 + 27 + 13.5 inches.
+    expect(job.bandLf.case).toBeCloseTo(114 / 12);
+    expect(job.bandLf.case + job.bandLf.front).toBeCloseTo(job.materials.reduce((a, m) => a + m.bandLf, 0));
+    // Ordered (non-slab) fronts are not banded here.
+    const ordered = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {}, 'fraction', null, undefined, { door: { name: 'Shaker', slab: false, grain: 'Vertical' }, drawer: { name: 'Shaker', slab: false, grain: 'Vertical' } });
+    expect(ordered.bandLf.front).toBe(0);
+  });
+
+  it('estimates edge banding per material: fronts all round, case parts and stretchers on the exposed edge', () => {
+    const job = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '1' }], {});
+    const cab = job.cabs[0];
+    const band = (desc: string) => cab.parts.find(p => p.desc === desc)!.band;
+    expect(band('Unfinished Left End')).toBe(30);
+    expect(band('Deck')).toBe(13.5);
+    expect(band('Top Stretcher')).toBe(13.5);
+    expect(band('Drawer Stretcher')).toBe(13.5);
+    expect(band('Nailer')).toBe(0);
+    expect(band('Unfinished Back')).toBe(0);
+    expect(cab.fronts.map(fr => fr.band)).toEqual([2 * (14.875 + 6.1875), 2 * (14.875 + 11.6875), 2 * (14.875 + 11.6875)]);
+    // ends 60 + deck 13.5 + 2 top stretchers 27 + drawer stretcher 13.5 + fronts 148.375 = 262.375 in
+    const t = sheetTotals(job.sawPlans, job.materials);
+    expect(t.find(x => x.name === '3/4 2s Melamine')!.bandLf).toBeCloseTo(262.375 / 12, 6);
+    expect(t.find(x => x.name === '1/4 1s Melamine')!.bandLf).toBe(0);
+    // Quantities multiply the banding.
+    const two = buildJob([{ id: 1, type: '3DB', w: '15', h: '30', d: '21', toe: '0', qty: '2' }], {});
+    expect(two.materials.find(m => m.name === '3/4 2s Melamine')!.bandLf).toBeCloseTo((2 * 262.375) / 12, 6);
+  });
+
+  it('reports parts too big for the sheet instead of counting them', () => {
+    const job = buildJob([{ id: 1, type: 'T', w: '18', h: '98', d: '24', toe: '0', qty: '1' }], {});
+    const caseTotal = sheetTotals(job.sawPlans).find(x => x.name === '3/4 2s Melamine')!;
+    expect(caseTotal.oversize).toBe(2);
+    // Case parts and the doors share the material; every one is either placed or listed as oversize.
+    const all = [...job.cabs[0].parts, ...job.cabs[0].fronts].filter(p => p.mat === '3/4 2s Melamine').reduce((n, p) => n + p.qty, 0);
+    expect(caseTotal.parts + caseTotal.oversize).toBe(all);
+  });
+});
+
+describe('front styles', () => {
+  const cab = { id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1' };
+  const slab = { name: 'Slab', slab: true, grain: 'Vertical' as const };
+
+  it('cuts only slab fronts; ordered styles still appear on the door list', () => {
+    const ordered = buildJob([cab], {}, 'fraction', null, undefined, { door: { name: 'Shaker', slab: false, grain: 'Vertical' }, drawer: slab });
+    expect(ordered.doors.map(r => [r.type, r.cut]).sort()).toEqual([['DF', true], ['DR', false]]);
+    const front = ordered.materials.find(m => m.name === '3/4 2s Melamine')!;
+    expect(front.rows.some(r => r.desc.startsWith('Door'))).toBe(false);
+    expect(front.rows.some(r => r.desc.startsWith('Drawer Front'))).toBe(true);
+    expect(ordered.sawPlans.flatMap(p => p.sheets.flatMap(s => s.parts.map(x => x.name))).some(n => n.startsWith('Door'))).toBe(false);
+    // Ordered doors carry no banding; drawer fronts still do.
+    const doors = ordered.cabs[0].fronts.filter(f => f.desc.startsWith('Door'));
+    expect(doors.every(f => !f.cut && f.band === 0)).toBe(true);
+    expect(ordered.d.doorStyle).toBe('Shaker');
+    // Both slab: everything is cut, as with no styles at all.
+    const all = buildJob([cab], {}, 'fraction', null, undefined, { door: slab, drawer: slab });
+    expect(all.materials.find(m => m.name === '3/4 2s Melamine')!.rows.filter(r => r.desc.startsWith('Door') || r.desc.startsWith('Drawer Front'))).toHaveLength(2);
+    expect(all.summary.nParts).toBe(buildJob([cab], {}).summary.nParts);
+  });
+
+  it('runs drawer and false fronts with the drawer front style grain; doors stay vertical', () => {
+    const job = buildJob([cab, { ...cab, id: 2, type: 'SB' }], {}, 'fraction', null, undefined, { door: slab, drawer: { name: 'Slab H', slab: true, grain: 'Horizontal' } });
+    const fronts = job.cabs.flatMap(c => c.fronts);
+    expect(fronts.filter(f => f.desc.startsWith('Door')).every(f => f.grain === 'Vertical')).toBe(true);
+    expect(fronts.filter(f => /Drawer Front|False Front/.test(f.desc)).every(f => f.grain === 'Horizontal')).toBe(true);
+    expect(job.doors.filter(r => r.type === 'DR').every(r => r.grain === 'Vertical' && r.cut)).toBe(true);
+    expect(job.doors.filter(r => r.type !== 'DR').every(r => r.grain === 'Horizontal')).toBe(true);
+    const row = job.materials.find(m => m.name === '3/4 2s Melamine')!.rows.find(r => r.desc.startsWith('Drawer Front'))!;
+    expect(row.grainTxt).toBe('Horizontal (along W)');
+    expect(job.d.fronts).toMatchObject({ drawerGrain: 'Horizontal', drawerFrontStyle: 'Slab H', doorSlab: true, drawerSlab: true });
+  });
+});
+
+describe('accessories (cut panels)', () => {
+  const build = (type: string, w: string, h: string) => buildJob([{ id: 1, type, w, h, d: '', toe: '', qty: '1' }], {});
+
+  it('a filler is one panel of the front material, banded on the long edge, with no faces or hardware', () => {
+    const job = build('FIL', '3', '34 1/2');
+    const c = job.cabs[0];
+    expect(c.panel).toBe(true);
+    expect(c.bad).toBe(false); // no depth needed
+    expect(c.parts).toEqual([{ qty: 1, desc: 'Filler', w: 3, l: 34.5, grain: 'Vertical', mat: '3/4 2s Melamine', band: 34.5, cut: true }]);
+    expect(c.fronts).toEqual([]); expect(c.hardware).toEqual([]); expect(c.sections).toEqual([]);
+    expect(job.doors).toEqual([]);
+    expect(job.materials.map(m => [m.name, m.rows[0].desc])).toEqual([['3/4 2s Melamine', 'Filler']]);
+    expect(job.summary.sheets).toBe(1);
+    expect(c.label).toBe('3" x 34 1/2" Filler');
+  });
+
+  it('a toe kick skin is cut from the toe kick material, runs horizontal with no banding; an end panel bands its long edge', () => {
+    const tk = build('TK', '96', '4 1/2').cabs[0].parts[0];
+    expect(tk).toMatchObject({ desc: 'Toe kick skin', w: 96, l: 4.5, grain: 'Horizontal', band: 0, mat: '1/4 1s Melamine' });
+    const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
+    const mats = { case: M('Case', '3/4'), back: M('Back', '1/4'), front: M('Front', '3/4'), toe: M('Skin', '1/4', '48', '96') };
+    const skin = buildJob([{ id: 1, type: 'TK', w: '96', h: '4 1/2', d: '', toe: '', qty: '1' }], {}, 'fraction', mats);
+    expect(skin.cabs[0].parts[0].mat).toBe('Skin');
+    expect(skin.sawPlans.map(p => [p.name, p.L, p.W])).toEqual([['Skin', 96, 48]]);
+    const ep = build('EP', '24', '34 1/2').cabs[0].parts[0];
+    expect(ep).toMatchObject({ desc: 'End panel', w: 24, l: 34.5, grain: 'Vertical', band: 34.5 });
+  });
+
+  it('a custom panel box can cut from the case material with all edges banded', () => {
+    const catalog: CabCatalog = { ...BUILTIN_CATALOG, types: [...BUILTIN_CATALOG.types, { code: 'SHF', cat: 'accessory', label: 'Loose shelf', img: '', h: '12', d: '0', toe: '0', faces: [], w: '30', panel: { mat: 'case', grain: 'Horizontal', band: 'all' } }] };
+    const p = buildJob([{ id: 1, type: 'SHF', w: '30', h: '12', d: '', toe: '', qty: '1' }], {}, 'fraction', null, catalog).cabs[0].parts[0];
+    expect(p).toMatchObject({ mat: '3/4 2s Melamine', grain: 'Horizontal', band: 84 });
+  });
+});
+
+describe('case part sizes and counts', () => {
+  const ctx = { inW: 28.5, faceA: 6.1875, inD: 23 };
+  it('reads a token, a dimension, or terms added and subtracted with spaces around the sign', () => {
+    expect(evalDim('inW', ctx)).toBe(28.5);
+    expect(evalDim('3 1/2', ctx)).toBe(3.5);
+    expect(evalDim('inW - 1/2', ctx)).toBe(28);
+    expect(evalDim('faceA + 3/4', ctx)).toBe(6.9375);
+    expect(evalDim('inW − 1', ctx)).toBe(27.5);
+    expect(evalDim('inD - 1 + 1/4', ctx)).toBe(22.25);
+    expect(evalDim('inW + 2*3/8', ctx)).toBe(29.25);
+    expect(evalDim('2 * faceA', ctx)).toBe(12.375);
+    expect(evalDim('2*nope', ctx)).toBeNaN();
+    // A mixed number keeps its dash; an unknown term or nothing at all is unreadable.
+    expect(evalDim('1-1/2', ctx)).toBe(1.5);
+    expect(evalDim('faceC + 1', ctx)).toBeNaN();
+    expect(evalDim('', ctx)).toBeNaN();
+    expect(evalDim('toString', ctx)).toBeNaN();
+  });
+  it('counts auto, auto+N or a number', () => {
+    expect([resolveQty('auto', 2), resolveQty('auto+1', 2), resolveQty('auto + 2', 0), resolveQty('3', 2), resolveQty('0', 2), resolveQty('x', 2)]).toEqual([2, 3, 2, 3, 0, 0]);
+  });
+});
+
+describe('case parts per box', () => {
+  const d = resolveDefaults();
+  const names = (parts: { qty: number; desc: string }[]) => parts.map(p => `${p.qty} ${p.desc}`);
+  const base: CabInput = { id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1' };
+  const build = (cab: CabInput, catalog?: CabCatalog) => buildJob([cab], {}, 'fraction', null, catalog).cabs[0];
+  /** A copy of box `from` as code X with the given parts list. */
+  const withParts = (parts: CasePart[], from = 'B') => ({
+    ...BUILTIN_CATALOG, types: [...BUILTIN_CATALOG.types, { ...BUILTIN_CATALOG.types.find(t => t.code === from)!, code: 'X', case: { parts } }],
+  });
+  const edit = (style: 'base' | 'wall' | 'tall', fn: (p: CasePart) => Partial<CasePart> | null) =>
+    defaultCaseParts(style).map(p => ({ ...p, ...(fn(p) ?? {}) }));
+
+  it('the default parts list builds exactly what the style built: same parts, same order', () => {
+    expect(names(build(base).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Deck', '1 Nailer', '2 Top Stretcher', '1 Drawer Stretcher', '1 Adjustable Shelf']);
+    expect(names(build({ ...base, type: '3DB', w: '15', h: '30', d: '21', toe: '0' }).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Deck', '1 Nailer', '2 Top Stretcher', '1 Drawer Stretcher']);
+    expect(names(build({ ...base, type: 'W', h: '30', d: '12', toe: '0' }).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Bottom', '1 Top', '2 Nailer', '2 Adjustable Shelf']);
+    // An explicit copy of the default is the same build.
+    expect(build({ ...base, type: 'X' }, withParts(defaultCaseParts('base'))).parts).toEqual(build(base).parts);
+  });
+
+  it('sink bases get a sink skirt 3/4" taller than the false front in place of the drawer stretcher', () => {
+    for (const type of ['SB', 'VSB']) {
+      const sb = build({ ...base, type });
+      const skirt = sb.parts.find(p => p.desc === 'Sink Skirt')!;
+      expect([skirt.qty, skirt.w, skirt.l, skirt.grain, skirt.mat, skirt.band]).toEqual([1, d.smallFront + 0.75, 28.5, 'Vertical', '3/4 2s Melamine', 0]);
+      expect(sb.parts.some(p => p.desc === 'Drawer Stretcher')).toBe(false);
+    }
+    // The skirt follows face A as the job lays it out; other built-ins have no skirt.
+    const custom = build({ ...base, type: 'SB', layout: [newSection('false', '8'), newSection('door')] });
+    expect(custom.parts.find(p => p.desc === 'Sink Skirt')!.w).toBe(8.75);
+    expect(build(base).parts.some(p => p.desc === 'Sink Skirt')).toBe(false);
+  });
+
+  it('parts can be switched off: a wall bookcase with no bottom, a base with a full top and no nailer', () => {
+    const noBottom = build({ ...base, type: 'X', h: '30', d: '12', toe: '0' }, withParts(edit('wall', p => (p.key === 'deck' ? { on: false } : null)), 'W'));
+    expect(noBottom.parts.some(p => p.desc === 'Bottom')).toBe(false);
+    expect(names(noBottom.parts)).toContain('1 Top');
+    const full = build({ ...base, type: 'X' }, withParts(edit('base', p => (p.key === 'top' ? { on: true } : p.key === 'topStretcher' ? { on: false } : p.key === 'nailer' ? { qty: '0' } : null))));
+    expect(names(full.parts)).toContain('1 Top');
+    expect(full.parts.some(p => /Stretcher$|Nailer/.test(p.desc) && p.desc !== 'Drawer Stretcher')).toBe(false);
+    expect(names(full.parts)).toContain('1 Drawer Stretcher');
+  });
+
+  it('counts add to what the layout needs; a finished interior cuts from the front material', () => {
+    const parts = edit('tall', p => (p.key === 'fixedShelf' ? { qty: 'auto+2' } : p.key === 'adjShelf' ? { qty: 'auto+1', mat: 'front' } : ['leftEnd', 'rightEnd', 'deck', 'top'].includes(p.key) ? { mat: 'front' } : null));
+    const cab = build({ ...base, type: 'X', h: '84' }, withParts(parts, 'T'));
+    // One fixed shelf between the stacked doors, plus two; four adjustable shelves, plus one, with pins to match.
+    expect(cab.parts.find(p => p.desc === 'Fixed Shelf')!.qty).toBe(3);
+    expect(cab.parts.find(p => p.desc === 'Adjustable Shelf')!).toMatchObject({ qty: 5, mat: d.frontMat });
+    expect(cab.hardware.find(h => h.item === 'Shelf Pin')!.qty).toBe(20);
+    expect(cab.parts.find(p => p.desc === 'Unfinished Left End')!.mat).toBe(d.frontMat);
+    expect(cab.parts.find(p => p.desc === 'Unfinished Back')!.mat).toBe(d.backMat);
+    // No adjustable shelf part, no pins.
+    const bare = build({ ...base, type: 'X', h: '84' }, withParts(edit('tall', p => (p.key === 'adjShelf' ? { on: false } : null)), 'T'));
+    expect(bare.hardware.some(h => h.item === 'Shelf Pin')).toBe(false);
+  });
+
+  it('custom parts are sized from expressions and banded on the chosen edges; unreadable sizes are skipped and reported', () => {
+    let parts = addCasePart(defaultCaseParts('base'), { key: 'divider', name: 'Divider', on: true, qty: '1', w: 'inD', l: 'boxH', grain: 'Vertical', mat: 'case', band: 'long' });
+    parts = addCasePart(parts, { key: 'rail', name: 'Oven rail', on: true, qty: '2', w: '3', l: 'inW - 1/2', grain: 'Horizontal', mat: 'front', band: 'all' });
+    parts = addCasePart(parts, { key: 'rail', name: 'Lip', on: true, qty: '1', w: 'faceA + 3/4', l: 'inW', grain: 'Vertical', mat: 'case', band: 'll' });
+    parts = addCasePart(parts, { key: 'bad', name: 'Skipped', on: true, qty: '1', w: 'nonsense', l: 'inW', grain: 'Vertical', mat: 'case', band: 'w' });
+    parts = addCasePart(parts, { key: 'off', name: 'Off', on: false, qty: '1', w: 'nonsense', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' });
+    expect(parts.map(p => p.key).slice(-6)).toEqual(['divider', 'rail', 'rail-2', 'bad', 'off', 'adjShelf']);
+    const cab = build({ ...base, type: 'X' }, withParts(parts));
+    const div = cab.parts.find(p => p.desc === 'Divider')!;
+    expect([div.w, div.l, div.band]).toEqual([24 - 0.75 - 0.25, 30, 30]);
+    const rail = cab.parts.find(p => p.desc === 'Oven rail')!;
+    expect([rail.qty, rail.w, rail.l, rail.grain, rail.mat, rail.band]).toEqual([2, 3, 28, 'Horizontal', '3/4 2s Melamine', 2 * (3 + 28)]);
+    const lip = cab.parts.find(p => p.desc === 'Lip')!;
+    expect([lip.w, lip.band]).toEqual([d.smallFront + 0.75, 2 * 28.5]);
+    expect(cab.parts.some(p => p.desc === 'Skipped' || p.desc === 'Off')).toBe(false);
+    expect(cab.skipped).toEqual(['Skipped: can\'t read width "nonsense"']);
+    // Custom parts come before the adjustable shelf, as the list orders them.
+    expect(names(cab.parts).slice(-2)).toEqual(['1 Lip', '1 Adjustable Shelf']);
+  });
+
+  it('the back is sized by its expression, so a loose back can be made narrower', () => {
+    const dflt = defaultCaseParts('base').find(p => p.key === 'back')!;
+    expect([dflt.w, dflt.l]).toEqual(['inW + 2*backGroove', 'boxH - 2*caseThk + 2*backGroove']);
+    const loose = build({ ...base, type: 'X' }, withParts(edit('base', p => (p.key === 'back' ? { w: 'inW - 1/8', l: 'boxH - 1/8', mat: 'case', band: 'l' } : null))));
+    const back = loose.parts.find(p => p.desc === 'Unfinished Back')!;
+    expect([back.w, back.l, back.mat, back.band]).toEqual([28.375, 29.875, d.caseMat, 29.875]);
+  });
+
+  it('partitions follow the split drawer sections whatever the list says', () => {
+    const parts = edit('base', p => (p.key === 'partition' ? { qty: '5', l: 'auto', mat: 'front', band: 'none' } : null));
+    const cab = build({ ...base, type: 'X', layout: [newSection('drawer', '6', { split: 3 }), newSection('door')] }, withParts(parts));
+    const part = cab.parts.find(p => p.desc === 'Drawer Partition')!;
+    expect([part.qty, part.w, part.l, part.mat, part.band]).toEqual([2, 23, 6.125, d.frontMat, 0]);
+    expect(SINK_SKIRT.w).toBe('faceA + 3/4');
+  });
+});
+
+describe('finished interior', () => {
+  const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
+  const mats = { case: M('3/4 2s Melamine', '3/4'), back: M('1/4 1s Melamine', '1/4'), front: M('3/4 Prefinished Maple Ply', '3/4'), toe: M('1/4 1s Melamine', '1/4') };
+  const cab = (finished: boolean, type = 'B'): CabInput => ({ id: 1, type, w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1', finished });
+
+  it('matches a 3/4 sheet with the 1/4 sheet of the same name, ignoring the face count', () => {
+    const pick = (name: string) => finishedBackFor(M(name, '3/4'), BUILTIN_MATERIALS)?.name ?? null;
+    expect(pick('3/4 2s Melamine')).toBe('1/4 1s Melamine');
+    expect(pick('3/4 Prefinished Maple Ply')).toBe('1/4 Prefinished Maple Ply');
+    expect(pick('3/4 MDF')).toBeNull();
+    expect(finishedBackFor(M('18mm Birch', '0.71'), [M('6mm Birch', '0.236'), M('3/4 Birch', '3/4')])?.name).toBe('6mm Birch');
+  });
+
+  it('cuts the case from the front material and the back from its 1/4 mate; the sheet size comes along', () => {
+    const job = buildJob([cab(true), cab(false)], {}, 'fraction', mats, undefined, null, BUILTIN_MATERIALS);
+    const [fin, plain] = job.cabs;
+    const mat = (c: typeof fin, desc: string) => c.parts.find(p => p.desc === desc)!.mat;
+    expect(fin.finished).toBe(true);
+    expect(['Unfinished Left End', 'Deck', 'Nailer', 'Top Stretcher', 'Adjustable Shelf'].map(n => mat(fin, n))).toEqual(Array(5).fill('3/4 Prefinished Maple Ply'));
+    expect(mat(fin, 'Unfinished Back')).toBe('1/4 Prefinished Maple Ply');
+    expect(fin.warn).toBe('');
+    expect(['Unfinished Left End', 'Unfinished Back'].map(n => mat(plain, n))).toEqual(['3/4 2s Melamine', '1/4 1s Melamine']);
+    expect(job.d.finishedBack).toEqual({ name: '1/4 Prefinished Maple Ply', thk: 0.25 });
+    expect(job.d.sheets['1/4 Prefinished Maple Ply']).toEqual({ L: 97, W: 49 });
+    expect(job.materials.map(m => m.name)).toEqual(expect.arrayContaining(['1/4 Prefinished Maple Ply', '3/4 Prefinished Maple Ply']));
+    // The job's own materials can supply the mate when the shop list is not passed.
+    const own = buildJob([cab(true)], {}, 'fraction', { ...mats, front: M('3/4 2s Melamine', '3/4') }).cabs[0];
+    expect(own.parts.find(p => p.desc === 'Unfinished Back')!.mat).toBe('1/4 1s Melamine');
+  });
+
+  it('without a 1/4 mate the back keeps the job material and the cabinet warns; accessories ignore the flag', () => {
+    const job = buildJob([cab(true), { ...cab(true, 'FIL'), d: '0', toe: '0' }], {}, 'fraction', { ...mats, front: M('3/4 MDF', '3/4') }, undefined, null, BUILTIN_MATERIALS);
+    const [fin, panel] = job.cabs;
+    expect(fin.parts.find(p => p.desc === 'Unfinished Back')!.mat).toBe('1/4 1s Melamine');
+    expect(fin.parts.find(p => p.desc === 'Deck')!.mat).toBe('3/4 MDF');
+    expect(fin.warn).toContain('No 1/4" material matches 3/4 MDF');
+    expect(panel.finished).toBe(false);
+    expect(panel.parts[0].mat).toBe('3/4 MDF');
   });
 });
