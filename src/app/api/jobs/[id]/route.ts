@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { currentUser, unauthorized } from '@/lib/auth';
-import { canEditJob, deleteJob, getJob, getShopConfig, updateJob } from '@/lib/db';
+import { canEditJob, deleteJob, getJob, getShopConfig, jobStatus, updateJob } from '@/lib/db';
 import { normalizeJobDoc } from '@/lib/job';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +20,8 @@ export async function PUT(req: Request, { params }: Ctx) {
   if (!me) return unauthorized();
   const { id } = await params;
   if (!canEditJob(id, me)) return notFound();
+  // Once submitted, an order is the shop's to change; the owner withdraws it to edit again.
+  if (me.role !== 'admin' && jobStatus(id) !== 'draft') return NextResponse.json({ error: 'This order has been submitted. Withdraw it to make changes.' }, { status: 409 });
   try {
     const doc = normalizeJobDoc(await req.json(), getShopConfig());
     const updatedAt = updateJob(id, doc);

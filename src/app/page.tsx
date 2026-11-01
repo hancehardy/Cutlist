@@ -1,6 +1,6 @@
 import { Home } from '@/components/Home';
 import { requireUser } from '@/lib/auth';
-import { countUsers, getShopConfig, listJobs } from '@/lib/db';
+import { countNewOrders, countUsers, getShopConfig, listJobs } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ export default async function HomePage() {
     <Home
       me={{ id: user.id, username: user.username, role: user.role }}
       recent={jobs.slice(0, 6)}
-      totals={{ jobs: jobs.length, users: admin ? countUsers() : 0, materials: shop.materials.length, methods: shop.presets.length, boxes: shop.catalog.types.length }}
+      totals={{ jobs: jobs.length, users: admin ? countUsers() : 0, materials: shop.materials.length, methods: shop.presets.length, boxes: shop.catalog.types.length, newOrders: admin ? countNewOrders() : 0 }}
     />
   );
 }

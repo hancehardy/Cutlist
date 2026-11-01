@@ -13,6 +13,7 @@ import { JobsMenu } from './JobsMenu';
 import { useAutosave } from './useAutosave';
 import { UserMenu, type Me } from './auth/UserMenu';
 import { PrintMenu } from './PrintMenu';
+import { OrderBar, type OrderState } from './OrderStatus';
 import { AssemblySheets, CabinetListReport, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, SheetSummaryReport, type ReportCtx } from './Reports';
 
 type Tab = 'config' | 'cabinets' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'sheets' | 'hardware';
@@ -20,11 +21,14 @@ const TABS: [Tab, string][] = [['config', 'Configure'], ['cabinets', 'Cabinet li
 /** Shop-floor reports only an admin sees. */
 const ADMIN_ONLY = new Set<Tab>(['cut', 'optimize']);
 
-interface Props { jobId: string; initialDoc: JobDoc; initialShop: ShopConfig; user: Me }
+interface Props { jobId: string; initialDoc: JobDoc; initialShop: ShopConfig; user: Me; initialOrder: OrderState }
 
-export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
+export function CutlistApp({ jobId, initialDoc, initialShop, user, initialOrder }: Props) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
+  const [order, setOrder] = useState(initialOrder);
+  // A submitted or received order is read-only for its owner; admins can always edit.
+  const locked = user.role !== 'admin' && order.status !== 'draft';
   // The shop config as loaded, plus any boxes saved from this job's configurator.
   const [shop, setShop] = useState(initialShop);
   const [tab, setTab] = useState<Tab>('config');
@@ -141,7 +145,9 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
       <div data-print-hide="1" className="flex max-w-[640px] min-w-0 flex-[1_1_600px] flex-col gap-4">
         {topBar}
 
-        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} presets={shop.presets} d={result.d} onEdit={() => { setView('setup'); window.scrollTo(0, 0); }} />
+        <JobSummaryCard job={job} method={doc.method} defaults={doc.defaults} presets={shop.presets} d={result.d} onEdit={locked ? undefined : () => { setView('setup'); window.scrollTo(0, 0); }} />
+        <OrderBar jobId={jobId} state={order} admin={user.role === 'admin'} onChange={setOrder} />
+        <div className={locked ? 'pointer-events-none opacity-60' : ''} aria-disabled={locked}>
 
         <CabinetList cabs={cabs} built={result.cabs} catalog={shop.catalog} d={result.d} f={f} selId={selCabId} pickId={pickId}
           onUpdate={upd}
@@ -167,6 +173,7 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
             setCabs(cs => [...cs, { id, type: t.code, w: '30', h: f(parseDim(t.h)), d: f(parseDim(t.d)), toe: f(parseDim(t.toe)), qty: '1', layout: null }]);
             select(id); setTab('config');
           }} />
+        </div>
       </div>
 
       {/* ============ REPORTS ============ */}
@@ -185,9 +192,11 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
         </div>
 
         {show('config') && (
+          <div className={locked ? 'pointer-events-none opacity-60' : ''} aria-disabled={locked}>
           <Configurator cabs={cabs} built={result.cabs} catalog={shop.catalog} d={result.d} f={f} selId={selCabId ?? null} selSec={selSec}
             onSelect={select} onSelectSec={setSelSec}
             onLayout={(id, layout: SectionInput[] | null) => upd(id, { layout })} onSaveBox={saveBox} />
+          </div>
         )}
         {show('cabinets') && <CabinetListReport {...ctx} />}
         {show('cut') && <CutListReport {...ctx} />}

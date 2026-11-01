@@ -1,8 +1,9 @@
 'use client';
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import type { JobSummary } from '@/lib/job';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { JOB_STATUS, type JobStatus, type JobSummary } from '@/lib/job';
+import { changeStatus } from './OrderStatus';
 import { UserMenu, type Me } from './auth/UserMenu';
 
 interface UserRow { id: string; username: string; role: 'admin' | 'user' }
@@ -15,10 +16,12 @@ const when = (iso: string) => day.format(new Date(iso));
 /** The job history page. Admins get a per-user breakdown; everyone gets search, open, new and delete. */
 export function JobList({ initial, users, me }: { initial: JobSummary[]; users: UserRow[]; me: Me & { id: string } }) {
   const router = useRouter();
+  const params = useSearchParams();
   const admin = me.role === 'admin';
   const [jobs, setJobs] = useState(initial);
   const [q, setQ] = useState('');
   const [who, setWho] = useState<string>('all');
+  const [status, setStatus] = useState<JobStatus | 'all'>(() => (JOB_STATUS.some(([k]) => k === params.get('status')) ? (params.get('status') as JobStatus) : 'all'));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const file = useRef<HTMLInputElement>(null);
@@ -30,7 +33,9 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
   }, [jobs]);
   const unowned = counts.get(UNOWNED) ?? 0;
   const needle = q.trim().toLowerCase();
+  const byStatus = (s: JobStatus) => jobs.filter(j => j.status === s).length;
   const rows = jobs.filter(j =>
+    (status === 'all' || j.status === status) &&
     (who === 'all' || (who === UNOWNED ? !j.ownerId : j.ownerId === who)) &&
     (!needle || [j.name, j.client, j.catalog, j.owner ?? ''].some(s => s.toLowerCase().includes(needle))));
 
@@ -47,6 +52,10 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
     if (!fl) return;
     try { await create({ doc: JSON.parse(await fl.text()) }); }
     catch { setErr(`${fl.name} is not a valid job file.`); }
+  };
+  const advance = async (j: JobSummary, status: JobStatus) => {
+    const r = await changeStatus(j.id, status);
+    if (typeof r !== 'string') setJobs(js => js.map(x => (x.id === j.id ? { ...x, ...r } : x)));
   };
   const remove = async (j: JobSummary) => {
     if (!window.confirm(`Delete "${j.name || 'Untitled job'}"? This can't be undone.`)) return;
@@ -87,6 +96,14 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
         <div className="flex flex-wrap items-center gap-2">
           <input value={q} onChange={e => setQ(e.target.value)} placeholder={admin ? 'Search job, client, catalog or user…' : 'Search job, client or catalog…'} aria-label="Search jobs"
             className="field min-w-[220px] flex-1 px-3 py-2 text-sm text-ink" />
+          <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Filter by status">
+            <button onClick={() => setStatus('all')} className={`${pill} ${status === 'all' ? 'border-ink bg-ink text-white' : 'border-rule bg-white text-ink hover:border-ink'}`}>Any status</button>
+            {JOB_STATUS.map(([k, l]) => (
+              <button key={k} onClick={() => setStatus(k)} className={`${pill} ${status === k ? 'border-ink bg-ink text-white' : k === 'submitted' && byStatus(k) ? 'border-accent bg-sel text-ink hover:border-ink' : 'border-rule bg-white text-ink hover:border-ink'}`}>
+                {k === 'submitted' && admin ? 'New orders' : l} <span className={`text-[11px] font-semibold ${status === k ? 'text-white/70' : 'text-muted'}`}>{byStatus(k)}</span>
+              </button>
+            ))}
+          </div>
           {admin && (
             <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Filter by user">
               {chip('all', 'All', jobs.length)}
@@ -97,8 +114,8 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
         </div>
 
         <div className="card overflow-x-auto px-[18px] py-3">
-          <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: `minmax(180px,2fr) minmax(110px,1fr) 70px ${admin ? 'minmax(100px,1fr) ' : ''}100px 100px 110px` }}>
-            {['Job', 'Catalog', 'Cabs', ...(admin ? ['User'] : []), 'Updated', 'Created', ''].map((h, i) => <div key={i} className="th py-2">{h}</div>)}
+          <div className="grid items-center gap-x-3 gap-y-0" style={{ gridTemplateColumns: `minmax(180px,2fr) minmax(90px,1fr) 60px ${admin ? 'minmax(100px,1fr) ' : ''}minmax(110px,1fr) 100px ${admin ? '170px' : '110px'}` }}>
+            {['Job', 'Catalog', 'Lines', ...(admin ? ['User'] : []), 'Status', 'Updated', ''].map((h, i) => <div key={i} className="th py-2">{h}</div>)}
             {rows.map(j => (
               <div key={j.id} className="contents">
                 <Link href={`/job/${j.id}`} className="td min-w-0 text-ink hover:text-ink">
@@ -108,9 +125,16 @@ export function JobList({ initial, users, me }: { initial: JobSummary[]; users: 
                 <div className="td truncate text-[13px] text-ink-3">{j.catalog}</div>
                 <div className="td text-[13px] tabular-nums">{j.cabs}</div>
                 {admin && <div className="td truncate text-[13px] text-ink-3">{j.owner ?? <span className="text-faint">no owner</span>}</div>}
+                <div className="td text-[13px]">
+                  {j.status === 'draft' && <span className="text-muted">Draft</span>}
+                  {j.status === 'submitted' && <span className="whitespace-nowrap rounded-full bg-accent px-2 py-0.5 text-[11px] font-extrabold text-white" title={`Submitted ${when(j.submittedAt ?? j.updatedAt)}`}>Submitted</span>}
+                  {j.status === 'received' && <span className="whitespace-nowrap text-ink-3" title={`Received ${when(j.receivedAt ?? j.updatedAt)}`}>Received</span>}
+                  {j.status === 'completed' && <span className="whitespace-nowrap font-semibold text-ink-3" title={`Completed ${when(j.completedAt ?? j.updatedAt)}`}>✓ Completed</span>}
+                </div>
                 <div className="td text-[13px] text-ink-3 tabular-nums">{when(j.updatedAt)}</div>
-                <div className="td text-[13px] text-ink-3 tabular-nums">{when(j.createdAt)}</div>
                 <div className="td flex items-center justify-end gap-1">
+                  {admin && j.status === 'submitted' && <button onClick={() => advance(j, 'received')} className="rounded-full border-none bg-accent px-2.5 py-1 text-xs font-bold text-white hover:bg-accent-dk">Receive</button>}
+                  {admin && j.status === 'received' && <button onClick={() => advance(j, 'completed')} className="rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink">Complete</button>}
                   <Link href={`/job/${j.id}`} className="rounded-full border border-rule bg-white px-2.5 py-1 text-xs font-bold text-ink hover:border-ink hover:no-underline">Open</Link>
                   <button onClick={() => remove(j)} title="Delete job" className="h-7 w-7 rounded-md border-none bg-transparent text-base text-faint hover:bg-canvas hover:text-danger">×</button>
                 </div>

@@ -3,7 +3,7 @@ import type { RawDefaults, Resolved } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 
-interface Props { job: JobInfo; method: string; defaults: RawDefaults; presets: Preset[]; d: Resolved; onEdit: () => void }
+interface Props { job: JobInfo; method: string; defaults: RawDefaults; presets: Preset[]; d: Resolved; onEdit?: () => void }
 
 /** Compact job + construction card at the top of the item entry page. */
 export function JobSummaryCard({ job, method, defaults, presets, d, onEdit }: Props) {
@@ -14,7 +14,7 @@ export function JobSummaryCard({ job, method, defaults, presets, d, onEdit }: Pr
       <div className="flex items-baseline gap-2.5">
         <div className="min-w-0 truncate text-base font-bold">{job.name || 'Untitled job'}</div>
         {meta && <div className="min-w-0 truncate text-[13px] text-muted">{meta}</div>}
-        <button onClick={onEdit} className="ml-auto flex-none border-none bg-transparent p-0 text-[13px] font-bold text-link hover:underline">Edit setup</button>
+        {onEdit && <button onClick={onEdit} className="ml-auto flex-none border-none bg-transparent p-0 text-[13px] font-bold text-link hover:underline">Edit setup</button>}
       </div>
       <div className="flex flex-col gap-0.5 text-xs leading-[1.5] text-ink-3">
         <div>

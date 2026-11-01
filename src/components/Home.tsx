@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { JobSummary } from '@/lib/job';
 import { UserMenu, type Me } from './auth/UserMenu';
 
-interface Totals { jobs: number; users: number; materials: number; methods: number; boxes: number }
+interface Totals { jobs: number; users: number; materials: number; methods: number; boxes: number; newOrders: number }
 const day = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
 const tile = 'card flex flex-col gap-1 px-5 py-4 text-left text-ink hover:border-ink hover:no-underline';
 
@@ -43,6 +43,13 @@ export function Home({ me, recent, totals }: { me: Me & { id: string }; recent: 
           </div>
         </div>
 
+        {admin && totals.newOrders > 0 && (
+          <Link href="/jobs?status=submitted" className="flex items-center gap-3 rounded-xl border-2 border-accent bg-sel px-[18px] py-3 text-ink hover:no-underline">
+            <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-extrabold text-white">{totals.newOrders}</span>
+            <span className="text-[14px] font-bold">new order{totals.newOrders === 1 ? '' : 's'} submitted and waiting to be received</span>
+            <span className="ml-auto text-[13px] font-bold text-link">Open →</span>
+          </Link>
+        )}
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))' }}>
           <button onClick={newJob} disabled={busy} className={`${tile} border-2 border-accent bg-sel disabled:opacity-60`}>
             <div className="text-base font-extrabold">New job</div>

@@ -23,10 +23,15 @@ export interface JobDoc {
   setupDone: boolean;
 }
 
+/** Where an order is: being entered, sent to the shop, taken in by the shop, or built and done. */
+export type JobStatus = 'draft' | 'submitted' | 'received' | 'completed';
+export const JOB_STATUS: [JobStatus, string][] = [['draft', 'Draft'], ['submitted', 'Submitted'], ['received', 'Received'], ['completed', 'Completed']];
+
 /** A row of the job list. `owner` is the username, null for jobs saved before accounts existed. */
 export interface JobSummary {
   id: string; name: string; client: string; catalog: string; cabs: number;
   ownerId: string | null; owner: string | null; createdAt: string; updatedAt: string;
+  status: JobStatus; submittedAt: string | null; receivedAt: string | null; completedAt: string | null;
 }
 
 const MELAMINE_34: Material = { name: '3/4 2s Melamine', thk: '3/4', w: '49', l: '97' };

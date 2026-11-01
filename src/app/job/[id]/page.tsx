@@ -11,5 +11,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const { id } = await params;
   const job = getJob(id, user);
   if (!job) redirect('/jobs');
-  return <CutlistApp key={job.id} jobId={job.id} initialDoc={job.doc} initialShop={getShopConfig()} user={{ username: user.username, role: user.role }} />;
+  return <CutlistApp key={job.id} jobId={job.id} initialDoc={job.doc} initialShop={getShopConfig()} user={{ username: user.username, role: user.role }}
+    initialOrder={{ status: job.status, submittedAt: job.submittedAt, receivedAt: job.receivedAt, completedAt: job.completedAt }} />;
 }

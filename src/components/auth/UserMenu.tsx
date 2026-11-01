@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { OrdersBadge } from '../OrderStatus';
 
 export interface Me { username: string; role: 'admin' | 'user' }
 
@@ -14,6 +15,7 @@ export function UserMenu({ user, admin = false, home = false }: { user: Me; admi
   };
   return (
     <div className="ml-auto flex items-center gap-3 text-xs">
+      {user.role === 'admin' && <OrdersBadge />}
       {!home && <Link href="/" className="font-bold">Home</Link>}
       {user.role === 'admin' && !admin && <Link href="/admin" className="font-bold">Admin</Link>}
       <span className="text-muted">{user.username}{user.role === 'admin' ? ' · admin' : ''}</span>
