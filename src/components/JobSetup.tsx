@@ -147,6 +147,7 @@ export function JobSetup({ job, method, defaults, materials, banding, fronts, f,
             <MaterialField key={slot} label={lab} value={materials[slot]} materials={shopMaterials} onChange={m => onMaterial(slot, m)} />
           ))}
         </div>
+        <div className="text-[11px] text-muted">A job has one case finish and one front finish. Cabinets that need a different finish go on a separate job.</div>
         <div className="mt-1 grid gap-x-3.5 gap-y-2.5 border-t border-line-2 pt-3" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))' }}>
           <BandingField label="Case edge banding" value={banding.case} onChange={b => onBanding('case', b)} />
           <BandingField label="Front edge banding" value={banding.front} onChange={b => onBanding('front', b)} />
