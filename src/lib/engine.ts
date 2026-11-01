@@ -64,6 +64,94 @@ export const BUILD_STYLES: [BuildStyle, string][] = [
 
 /** How an accessory panel is cut: which job material, grain, and which edges are banded. */
 export interface PanelSpec { mat: MatSlot; grain: Grain; band: 'none' | 'long' | 'all' }
+
+const LETTERS = 'ABCDEFGHIJKLMNOP';
+
+/**
+ * Named dimensions a case part can be sized from, besides a plain number. A size is one term, or terms joined with
+ * ` + ` or ` - ` (spaces around the sign, so `1-1/2` stays a mixed number): `faceA + 3/4`, `inW - 1/2`.
+ */
+export const DIM_TOKENS: [string, string][] = [
+  ['inW', 'Inside width'], ['inD', 'Inside depth, to the back'], ['D', 'Depth'], ['W', 'Width'], ['H', 'Height'], ['boxH', 'Box height, less the toe'],
+  ['stretcherW', 'Stretcher width'], ['smallFront', 'Top drawer front height'], ['tallLowerDoor', 'Tall lower door height'],
+  ['caseThk', 'Case thickness'], ['backThk', 'Back thickness'], ['backGroove', 'Back groove depth'], ['shelfSetback', 'Shelf setback'], ['shelfClear', 'Shelf side clearance'],
+  ...[...LETTERS].map((c): [string, string] => [`face${c}`, `Height of face ${c}`]),
+];
+/** A case part's size as typed: 'auto' (the engine sizes it) or a DIM_TOKENS expression. NaN when a term is unknown. */
+export function evalDim(expr: string, ctx: Record<string, number>): number {
+  const terms = String(expr ?? '').trim().split(/\s+([+\-−])\s+/);
+  if (!terms[0]) return NaN;
+  let total = 0, sign = 1;
+  for (let i = 0; i < terms.length; i += 2) {
+    const t = terms[i].trim();
+    const v = Object.hasOwn(ctx, t) ? ctx[t] : parseDim(t);
+    if (isNaN(v)) return NaN;
+    total += sign * v;
+    sign = terms[i + 1] === '+' ? 1 : -1;
+  }
+  return total;
+}
+/** A case part's count as typed: 'auto' (what the layout needs), 'auto+N', or a number. */
+export const QTY_RE = /^(auto(\s*\+\s*\d+)?|\d+)$/;
+export function resolveQty(q: string, auto: number): number {
+  const s = String(q ?? '').trim();
+  if (s === 'auto') return auto;
+  const m = s.match(/^auto\s*\+\s*(\d+)$/);
+  if (m) return auto + +m[1];
+  const n = parseInt(s, 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/** Which edges of a case part get edge banding: `l` runs along its length (the front edge of ends, decks and shelves). */
+export type BandEdge = 'none' | 'l' | 'w' | 'long' | 'll' | 'all';
+export const BAND_EDGES: [BandEdge, string][] = [['none', 'None'], ['l', 'One length edge'], ['w', 'One width edge'], ['long', 'Longer edge'], ['ll', 'Both length edges'], ['all', 'All four edges']];
+export const bandInches = (b: BandEdge, w: number, l: number) =>
+  b === 'l' ? l : b === 'w' ? w : b === 'long' ? Math.max(w, l) : b === 'll' ? 2 * l : b === 'all' ? 2 * (w + l) : 0;
+
+/**
+ * One part of a box's case. `key` is a STANDARD_PARTS key (the engine knows its automatic count and size) or a custom
+ * id; `qty` is 'auto', 'auto+N' or a number; `w` and `l` are 'auto' or a DIM_TOKENS expression. A part that is off,
+ * or whose size can't be read, is not made.
+ */
+export interface CasePart { key: string; name: string; on: boolean; qty: string; w: string; l: string; grain: Grain; mat: MatSlot; band: BandEdge }
+/** A box's whole case parts list, stored once the admin changes anything from the category default. */
+export interface CaseSpec { parts: CasePart[] }
+/** The parts a category style builds, in the order they are made. The back and partitions are sized by the engine. */
+export const STANDARD_PARTS = ['leftEnd', 'rightEnd', 'back', 'deck', 'top', 'nailer', 'topStretcher', 'partition', 'drawerStretcher', 'fixedShelf', 'adjShelf'] as const;
+export type StandardPart = (typeof STANDARD_PARTS)[number];
+/** Parts whose count follows the layout when their qty is 'auto'. */
+export const AUTO_QTY_PARTS: StandardPart[] = ['partition', 'drawerStretcher', 'fixedShelf', 'adjShelf'];
+/** Fields the engine always sizes itself (shown read-only as 'auto'). */
+export const AUTO_SIZED: Partial<Record<string, { w?: true; l?: true; qty?: true }>> = { back: { w: true, l: true }, partition: { l: true, qty: true } };
+
+/** The case a category style builds: what `buildCabinet` made before boxes carried their own parts list. */
+export function defaultCaseParts(style: BuildStyle): CasePart[] {
+  const wall = style === 'wall', tall = style === 'tall';
+  const p = (key: StandardPart, name: string, qty: string, w: string, l: string, grain: Grain, band: BandEdge, on = true, mat: MatSlot = 'case'): CasePart =>
+    ({ key, name, on, qty, w, l, grain, mat, band });
+  return [
+    p('leftEnd', 'Unfinished Left End', '1', 'D', 'boxH', 'Vertical', 'l'),
+    p('rightEnd', 'Unfinished Right End', '1', 'D', 'boxH', 'Vertical', 'l'),
+    p('back', 'Unfinished Back', '1', 'auto', 'auto', 'Vertical', 'none', true, 'back'),
+    p('deck', wall ? 'Bottom' : 'Deck', '1', 'D', 'inW', 'Horizontal', 'l'),
+    p('top', 'Top', '1', 'D', 'inW', 'Horizontal', 'l', wall || tall),
+    p('nailer', 'Nailer', wall ? '2' : '1', 'stretcherW', 'inW', 'Vertical', 'none'),
+    p('topStretcher', 'Top Stretcher', '2', 'stretcherW', 'inW', 'Vertical', 'l', !wall && !tall),
+    p('partition', 'Drawer Partition', 'auto', 'inD', 'auto', 'Vertical', 'l'),
+    p('drawerStretcher', 'Drawer Stretcher', 'auto', 'stretcherW', 'inW', 'Vertical', 'l'),
+    p('fixedShelf', 'Fixed Shelf', 'auto', 'inD', 'inW', 'Horizontal', 'l'),
+    p('adjShelf', 'Adjustable Shelf', 'auto', 'inD - shelfSetback', 'inW - shelfClear', 'Horizontal', 'l'),
+  ];
+}
+/** Add a custom part where extras go, before the adjustable shelves, with a key no other part uses. */
+export function addCasePart(parts: CasePart[], part: CasePart): CasePart[] {
+  let key = part.key || 'p';
+  for (let n = 2; parts.some(p => p.key === key); n++) key = `${part.key || 'p'}-${n}`;
+  const i = parts.findIndex(p => p.key === 'adjShelf');
+  const next = [...parts];
+  next.splice(i < 0 ? parts.length : i, 0, { ...part, key });
+  return next;
+}
 export const DEFAULT_PANEL: PanelSpec = { mat: 'front', grain: 'Vertical', band: 'long' };
 export const PANEL_BANDS: [PanelSpec['band'], string][] = [['none', 'None'], ['long', 'One long edge'], ['all', 'All four edges']];
 export interface CabCategory { key: string; label: string; style: BuildStyle }
@@ -79,7 +167,7 @@ export interface FaceSpec { kind: Kind; h: string; split: number; shelves: numbe
  * A box type: the code jobs refer to, its category, picker image (blank = drawn from the faces), default size and standard
  * faces. `w` is a default width applied when the box is picked (fillers, toe kicks); `panel` is how an accessory is cut.
  */
-export interface CabType { code: string; cat: string; label: string; img: string; h: string; d: string; toe: string; faces: FaceSpec[]; w?: string; panel?: PanelSpec }
+export interface CabType { code: string; cat: string; label: string; img: string; h: string; d: string; toe: string; faces: FaceSpec[]; w?: string; panel?: PanelSpec; case?: CaseSpec }
 export interface CabCatalog { categories: CabCategory[]; types: CabType[] }
 
 export const newFace = (kind: Kind, h = '', o: Partial<FaceSpec> = {}): FaceSpec =>
@@ -87,6 +175,12 @@ export const newFace = (kind: Kind, h = '', o: Partial<FaceSpec> = {}): FaceSpec
 const F = newFace;
 const T = (code: string, cat: string, img: string, label: string, h: string, d: string, toe: string, faces: FaceSpec[]): CabType =>
   ({ code, cat, label, img: `/assets/sku/${img}.png`, h, d, toe, faces });
+
+/** The rail behind a sink base's false front: 3/4" taller than the false front (face A), the inside width long. */
+export const SINK_SKIRT: CasePart = { key: 'sinkSkirt', name: 'Sink Skirt', on: true, qty: '1', w: 'faceA + 3/4', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' };
+/** A sink base's case: the skirt behind the false front takes the place of the drawer stretcher. */
+export const sinkBaseParts = (style: BuildStyle = 'base'): CasePart[] =>
+  addCasePart(defaultCaseParts(style).map(p => (p.key === 'drawerStretcher' ? { ...p, on: false } : p)), SINK_SKIRT);
 
 export const BUILTIN_CATEGORIES: CabCategory[] = [
   { key: 'base', label: 'Base', style: 'base' }, { key: 'wall', label: 'Wall', style: 'wall' },
@@ -101,13 +195,13 @@ export const BUILTIN_TYPES: CabType[] = [
   T('2DB', 'base', 'base-2d', '2 drawer', '34 1/2', '24', '4 1/2', [F('drawer'), F('drawer')]),
   T('3DB', 'base', 'base-3d', '3 drawer', '34 1/2', '24', '4 1/2', [F('drawer', 'smallFront'), F('drawer'), F('drawer')]),
   T('4DB', 'base', 'base-4d', '4 drawer', '34 1/2', '24', '4 1/2', [F('drawer', 'smallFront'), F('drawer'), F('drawer'), F('drawer')]),
-  T('SB', 'base', 'base-sink', 'Sink base', '34 1/2', '24', '4 1/2', [F('false', 'smallFront'), F('door')]),
+  { ...T('SB', 'base', 'base-sink', 'Sink base', '34 1/2', '24', '4 1/2', [F('false', 'smallFront'), F('door')]), case: { parts: sinkBaseParts() } },
   T('W', 'wall', 'wall-std', 'Doors', '30', '12', '0', [F('door', '', { shelves: 'auto' })]),
   T('WO', 'wall', 'wall-open', 'Open shelf', '30', '12', '0', [F('open', '', { shelves: 'auto' })]),
   T('T', 'tall', 'tall-std', 'Pantry, upper + lower doors', '84', '24', '4 1/2', [F('door', '', { shelves: 3 }), F('door', 'tallLowerDoor', { shelves: 1 })]),
   T('TD', 'tall', 'tall-po', 'Pantry, full-height doors', '84', '24', '4 1/2', [F('door', '', { shelves: 4 })]),
   T('V', 'vanity', 'van-fh', 'Doors', '30', '21', '0', [F('door')]),
-  T('VSB', 'vanity', 'van-sink', 'Sink, false front + doors', '30', '21', '0', [F('false', 'smallFront'), F('door')]),
+  { ...T('VSB', 'vanity', 'van-sink', 'Sink, false front + doors', '30', '21', '0', [F('false', 'smallFront'), F('door')]), case: { parts: sinkBaseParts() } },
   T('V3DB', 'vanity', 'van-3d', '3 drawer', '30', '21', '0', [F('drawer', 'smallFront'), F('drawer'), F('drawer')]),
   A('FIL', 'Filler', '3', '34 1/2'),
   A('EP', 'End panel', '24', '34 1/2'),
@@ -250,7 +344,6 @@ export function defaultLayout(type: string, d: Resolved, H: number, catalog: Cab
   const t = typeFor(catalog, type) ?? catalog.types[0];
   return t ? resolveFaces(t.faces, d, H) : [newSection('door')];
 }
-const LETTERS = 'ABCDEFGHIJKLMNOP';
 
 /** `band` is the lineal inches of edge banding on one part: fronts all round, case parts along the exposed edge, backs and nailers none. */
 /** `cut`: cut from sheet stock in the shop. Ordered fronts (non-slab styles) are listed on the door list but kept off the cut list, saw plans and banding. */
@@ -268,6 +361,8 @@ export interface BuiltCabinet {
   idx: number; type: string; cat: string; catLabel: string; typeLabel: string; code: string; label: string; W: number; H: number; D: number; toe: number;
   parts: Part[]; fronts: Part[]; drawers: DrawerBox[]; hardware: HardwareItem[]; sections: Section[];
   warn: string; custom: boolean; bad: boolean; qty: number;
+  /** Case parts not made because a size or count could not be read, for the admin preview. */
+  skipped: string[];
   /** An accessory: a single cut panel, no case, faces or hardware. */
   panel: boolean;
   boxH: number; isWall: boolean; isTall: boolean; autoH: number; avail: number;
@@ -284,7 +379,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   const bad = panel ? [W, H].some(isNaN) || W <= 0 || H <= 0 : [W, H, D].some(isNaN) || W <= 0 || H <= 0 || D <= 0 || toe >= H;
   const out: BuiltCabinet = {
     idx, type: c.type, cat: t.cat, catLabel: categoryLabel(catalog, t.cat), typeLabel: t.label, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
-    parts: [], fronts: [], drawers: [], hardware: [], sections: [], warn: '', custom: !!c.layout, bad,
+    parts: [], fronts: [], drawers: [], hardware: [], sections: [], warn: '', custom: !!c.layout, bad, skipped: [],
     qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0, panel,
   };
   if (bad) return out;
@@ -310,23 +405,10 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
     out.fronts.push({ qty, desc, w, l, grain: kind === 'door' ? 'Vertical' : d.fronts.drawerGrain, mat: d.frontMat, band: cut ? 2 * (w + l) : 0, cut });
   };
   const layout = c.layout && c.layout.length ? c.layout : defaultLayout(c.type, d, H, catalog);
-  // Case
-  // Edge banding: the front edge of ends, decks, tops, shelves and partitions, the long edge of stretchers.
-  P(1, 'Unfinished Left End', D, boxH, 'Vertical', d.caseMat, boxH);
-  P(1, 'Unfinished Right End', D, boxH, 'Vertical', d.caseMat, boxH);
   // Frameless back: captured in a groove on all four sides, set in from the rear edge so
   // nailers fit behind it. Usable depth inside the box stops at the back's front face.
   const inD = D - d.backInset - d.backThk;
-  P(1, 'Unfinished Back', inW + 2 * d.backGroove, boxH - 2 * thk + 2 * d.backGroove, 'Vertical', d.backMat);
-  P(1, isWall ? 'Bottom' : 'Deck', D, inW, 'Horizontal', d.caseMat, inW);
-  if (isWall || isTall) {
-    P(1, 'Top', D, inW, 'Horizontal', d.caseMat, inW);
-    P(isWall ? 2 : 1, 'Nailer', d.stretcherW, inW, 'Vertical', d.caseMat);
-  } else {
-    P(1, 'Nailer', d.stretcherW, inW, 'Vertical', d.caseMat);
-    P(2, 'Top Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat, inW);
-  }
-  // Faces
+  // Faces (the case parts follow, once the layout has fixed the counts and face heights)
   const gap = d.frontGap, openH = boxH - d.topReveal - d.bottomReveal, frontW = W - 2 * d.sideReveal;
   const hs = layout.map(s => { const v = parseDim(s.h); return isNaN(v) || v <= 0 ? null : v; });
   const fixed = hs.reduce<number>((a, v) => a + (v || 0), 0), nAuto = hs.filter(v => v == null).length;
@@ -336,8 +418,9 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   if (!nAuto && Math.abs(avail - fixed) > 0.01 && !out.warn) out.warn = `Faces total ${f(fixed)}" but the opening is ${f(avail)}". Clear one height to make it auto.`;
   out.autoH = autoH; out.avail = avail;
   const glide = glideLen(D, d);
-  const shelfD = inD - d.shelfSetback, shelfW = inW - d.shelfClear;
   let y = d.topReveal, spacers = 0, drawerStretch = 0, fixedShelves = 0, shelves = 0, rollouts = 0, drawerPulls = 0, doorPulls = 0, hinges = 0, drawerCount = 0;
+  // Partitions between drawers side by side: one group per split drawer section, as tall as the section.
+  const partitions: { qty: number; l: number }[] = [];
   const drawerish = (k: Kind) => k === 'drawer' || k === 'false';
   layout.forEach((s, i) => {
     const h = hs[i] ?? Math.max(autoH, 0);
@@ -358,7 +441,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
       const openW = (inW - (n - 1) * thk) / n;
       const bh = h < 7 ? d.smallBoxH : h < 10 ? Math.min(6, d.bigBoxH) : h < 13 ? d.bigBoxH : d.xlBoxH;
       out.drawers.push({ qty: n, kind: 'Drawer', w: openW - (d.boxDeduct - 2 * thk), dp: glide, h: bh, sec: tag });
-      if (n > 1) P(n - 1, 'Drawer Partition', inD, h + gap, 'Vertical', d.caseMat, h + gap);
+      if (n > 1) partitions.push({ qty: n - 1, l: h + gap });
       drawerPulls += n; drawerCount += n;
     }
     if (s.kind === 'door') { doorPulls += n; hinges += n * (h > 60 ? 4 : h > 40 ? 3 : 2); }
@@ -379,9 +462,30 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
     y += h + gap;
   });
   if (!isWall && !isTall && layout.some(s => s.kind === 'drawer')) drawerStretch = Math.max(drawerStretch, 1);
-  if (drawerStretch) P(drawerStretch, 'Drawer Stretcher', d.stretcherW, inW, 'Vertical', d.caseMat, inW);
-  if (fixedShelves) P(fixedShelves, 'Fixed Shelf', inD, inW, 'Horizontal', d.caseMat, inW);
-  if (shelves) P(shelves, 'Adjustable Shelf', shelfD, shelfW, 'Horizontal', d.caseMat, shelfW);
+  // Case: the box's parts list (or what its category style builds), each sized from the named dimensions.
+  // Edge banding: the front edge of ends, decks, tops, shelves and partitions, the long edge of stretchers.
+  const ctx = caseDims(out, d);
+  const autoQty: Record<string, number> = { drawerStretcher: drawerStretch, fixedShelf: fixedShelves, adjShelf: shelves };
+  const autoSize: Record<string, { w?: number; l?: number }> = { back: { w: inW + 2 * d.backGroove, l: boxH - 2 * thk + 2 * d.backGroove }, partition: { w: inD } };
+  const matOf = (m: MatSlot) => (m === 'back' ? d.backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : d.caseMat);
+  let adjShelves = 0;
+  for (const part of t.case?.parts ?? defaultCaseParts(style)) {
+    if (!part.on) continue;
+    const size = (k: 'w' | 'l') => (part[k].trim() === 'auto' ? (autoSize[part.key]?.[k] ?? NaN) : evalDim(part[k], ctx));
+    const skip = (k: 'w' | 'l') => out.skipped.push(`${part.name}: can't read ${k === 'w' ? 'width' : 'length'} "${part[k]}"`);
+    const w = size('w');
+    if (isNaN(w) || w <= 0) { skip('w'); continue; }
+    if (part.key === 'partition') {
+      for (const s of partitions) P(s.qty, part.name, w, s.l, part.grain, matOf(part.mat), bandInches(part.band, w, s.l));
+      continue;
+    }
+    const qty = resolveQty(part.qty, autoQty[part.key] ?? 1);
+    if (qty <= 0) continue;
+    const l = size('l');
+    if (isNaN(l) || l <= 0) { skip('l'); continue; }
+    if (part.key === 'adjShelf') adjShelves += qty;
+    P(qty, part.name, w, l, part.grain, matOf(part.mat), bandInches(part.band, w, l));
+  }
   // Hardware
   const spec = `${d.glideSeries}${Math.round(glide * 25.4)}0B ${f(glide)}"`;
   if (drawerPulls) out.hardware.push({ qty: drawerPulls, item: 'Drawer Pull', spec: d.pull });
@@ -392,8 +496,19 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
     if (spacers) out.hardware.push({ qty: spacers, item: 'Roll-out Spacer', spec: `${f(d.rolloutSpacer)} x 3 x ${f(inD - 1)}` });
   }
   if (hinges) out.hardware.push({ qty: hinges, item: 'Hinge', spec: d.hinge });
-  if (shelves) out.hardware.push({ qty: shelves * 4, item: 'Shelf Pin', spec: '5mm' });
+  if (adjShelves) out.hardware.push({ qty: adjShelves * 4, item: 'Shelf Pin', spec: '5mm' });
   return out;
+}
+
+/** The DIM_TOKENS values for a built cabinet: its sizes, the method's rules and each face's height (faceA, faceB, …). */
+export function caseDims(cab: Pick<BuiltCabinet, 'W' | 'H' | 'D' | 'boxH' | 'sections'>, d: Resolved): Record<string, number> {
+  const ctx: Record<string, number> = {
+    inW: cab.W - 2 * d.caseThk, inD: cab.D - d.backInset - d.backThk, D: cab.D, W: cab.W, H: cab.H, boxH: cab.boxH,
+    stretcherW: d.stretcherW, smallFront: d.smallFront, tallLowerDoor: d.tallLowerDoor,
+    caseThk: d.caseThk, backThk: d.backThk, backGroove: d.backGroove, shelfSetback: d.shelfSetback, shelfClear: d.shelfClear,
+  };
+  cab.sections.forEach((s, i) => { if (i < LETTERS.length) ctx[`face${LETTERS[i]}`] = s.h; });
+  return ctx;
 }
 
 function glideLen(D: number, d: Resolved) {

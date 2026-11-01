@@ -1,8 +1,9 @@
 'use client';
 import { useMemo, useRef, useState } from 'react';
 import {
-  BUILD_STYLES, DEFAULT_PANEL, MAT_SLOTS, PANEL_BANDS, buildCabinet, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, typesIn,
-  type CabCatalog, type CabCategory, type CabType, type FaceSpec, type Grain, type PanelSpec, type Resolved, type SectionInput,
+  AUTO_QTY_PARTS, AUTO_SIZED, BAND_EDGES, BUILD_STYLES, DEFAULT_PANEL, DIM_TOKENS, MAT_SLOTS, PANEL_BANDS, QTY_RE, SINK_SKIRT, STANDARD_PARTS,
+  addCasePart, buildCabinet, caseDims, defaultCaseParts, evalDim, facesFromSections, fmt, newFace, parseDim, resolveDefaults, resolveFaces, typesIn,
+  type BandEdge, type CabCatalog, type CabCategory, type CabType, type CasePart, type FaceSpec, type Grain, type MatSlot, type PanelSpec, type Resolved, type SectionInput,
 } from '@/lib/engine';
 import { presetKey, type ShopConfig } from '@/lib/shop';
 import { FaceEditor } from '../Configurator';
@@ -57,6 +58,57 @@ function BoxFaces({ type, d, catalog, onFaces }: { type: CabType; d: Resolved; c
   return (
     <FaceEditor built={built} layout={layout} d={d} f={fmt} selSec={selSec} onSelectSec={setSelSec} onLayout={change}
       toolbar={<span>Preview 30&quot; wide · a height equal to a rule follows that rule</span>} />
+  );
+}
+
+/** Parts a finished interior cuts from the front material. */
+const INTERIOR = new Set<string>(['leftEnd', 'rightEnd', 'deck', 'top', 'fixedShelf', 'adjShelf', 'partition']);
+const STANDARD = new Set<string>(STANDARD_PARTS);
+
+/**
+ * A box's case parts, one row each: on/off, name, count, width, length, grain, material slot and banding. Sizes are
+ * checked against the preview cabinet's dimensions; a size that can't be read is flagged and the part is not made.
+ */
+function CasePartsTable({ parts, dims, onChange }: { parts: CasePart[]; dims: Record<string, number> | null; onChange: (parts: CasePart[]) => void }) {
+  const cell = 'field min-w-0 px-2 py-1.5 text-[13px] text-ink disabled:bg-canvas disabled:text-muted';
+  const sizeBad = (p: CasePart, k: 'w' | 'l') => (p[k].trim() === 'auto' ? !AUTO_SIZED[p.key]?.[k] : !!dims && isNaN(evalDim(p[k], dims)));
+  const set = (i: number, patch: Partial<CasePart>) => onChange(parts.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= parts.length) return;
+    const next = [...parts]; [next[i], next[j]] = [next[j], next[i]]; onChange(next);
+  };
+  const qtyBlur = (i: number, p: CasePart) => () => { if (!QTY_RE.test(p.qty.trim())) set(i, { qty: AUTO_QTY_PARTS.includes(p.key as never) ? 'auto' : '1' }); };
+  return (
+    <div className="overflow-x-auto">
+      <div className="grid min-w-[760px] items-center gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: '22px minmax(120px,1.5fr) 62px minmax(96px,1fr) minmax(96px,1fr) 88px 86px 118px 50px 24px' }}>
+        {['', 'Part', 'Qty', 'Width', 'Length', 'Grain', 'Material', 'Banding', '', ''].map((h, i) => <div key={i} className="text-[11px] font-bold tracking-[0.1em] text-muted uppercase">{h}</div>)}
+        {parts.map((p, i) => {
+          const auto = AUTO_SIZED[p.key] ?? {}, std = STANDARD.has(p.key), dim = p.on ? '' : 'opacity-50';
+          return (
+            <div key={p.key} className="contents">
+              <input type="checkbox" checked={p.on} onChange={e => set(i, { on: e.target.checked })} className="h-4 w-4 accent-accent" aria-label={`Make ${p.name}`} />
+              <input value={p.name} onChange={e => set(i, { name: e.target.value })} className={`${cell} ${dim} ${p.name.trim() ? '' : 'field-bad'}`} aria-label={`Part ${i + 1} name`} />
+              <input value={p.qty} disabled={!!auto.qty} list="qty-options" onChange={e => set(i, { qty: e.target.value })} onBlur={qtyBlur(i, p)}
+                className={`${cell} ${dim} text-center ${QTY_RE.test(p.qty.trim()) ? '' : 'field-bad'}`} aria-label={`${p.name} quantity`} title={auto.qty ? 'One per split drawer section' : ''} />
+              <input value={p.w} disabled={!!auto.w} list="dim-tokens" onChange={e => set(i, { w: e.target.value })} className={`${cell} ${dim} ${sizeBad(p, 'w') ? 'field-bad' : ''}`} aria-label={`${p.name} width`} />
+              <input value={p.l} disabled={!!auto.l} list="dim-tokens" onChange={e => set(i, { l: e.target.value })} className={`${cell} ${dim} ${sizeBad(p, 'l') ? 'field-bad' : ''}`} aria-label={`${p.name} length`}
+                title={auto.l ? 'Sized by the engine' : ''} />
+              <select value={p.grain} onChange={e => set(i, { grain: e.target.value as Grain })} className={`${cell} ${dim}`} aria-label={`${p.name} grain`}><option value="Vertical">Vertical</option><option value="Horizontal">Horizontal</option></select>
+              <select value={p.mat} onChange={e => set(i, { mat: e.target.value as MatSlot })} className={`${cell} ${dim}`} aria-label={`${p.name} material`}>{MAT_SLOTS.map(([k, l]) => <option key={k} value={k}>{l.replace(' material', '')}</option>)}</select>
+              <select value={p.band} onChange={e => set(i, { band: e.target.value as BandEdge })} className={`${cell} ${dim}`} aria-label={`${p.name} banding`}>{BAND_EDGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              <div className="flex">
+                <button onClick={() => move(i, -1)} disabled={i === 0} className={iconBtn} aria-label={`Move ${p.name} up`}>↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === parts.length - 1} className={iconBtn} aria-label={`Move ${p.name} down`}>↓</button>
+              </div>
+              {std ? <span /> : <button onClick={() => onChange(parts.filter((_, j) => j !== i))} className={`${iconBtn} hover:text-danger`} aria-label={`Remove ${p.name}`}>×</button>}
+            </div>
+          );
+        })}
+      </div>
+      <datalist id="dim-tokens">{DIM_TOKENS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</datalist>
+      <datalist id="qty-options">{['auto', 'auto+1', 'auto+2', '1', '2', '3', '4'].map(q => <option key={q} value={q} />)}</datalist>
+    </div>
   );
 }
 
@@ -123,6 +175,14 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
 
   if (!cat) return <div className="text-sm text-muted">No categories yet. Restore the built-in defaults below.</div>;
   const isPanel = cat.style === 'panel';
+  // The box's case parts: its own list once edited, else what the category style builds.
+  const parts: CasePart[] = type?.case?.parts ?? (type && !isPanel ? defaultCaseParts(cat.style) : []);
+  const setParts = (list: CasePart[]) => patchType(t => ({ ...t, case: { parts: list } }));
+  const resetParts = () => patchType(t => { const rest = { ...t }; delete rest.case; return rest; });
+  // What the case comes out as at the preview size, so the admin sees each part and anything that could not be sized.
+  const preview = type && !isPanel ? sampleCabinet(type, d, cfg.catalog) : null;
+  const previewDims = preview && !preview.bad ? caseDims(preview, d) : null;
+  const matName = (m: MatSlot) => (m === 'back' ? d.backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : d.caseMat);
   const panelSpec: PanelSpec = type?.panel ?? DEFAULT_PANEL;
   const setPanel = (patch: Partial<PanelSpec>) => patchType(t => ({ ...t, panel: { ...(t.panel ?? DEFAULT_PANEL), ...patch } }));
   const tile = (on: boolean) => `flex flex-col gap-1 rounded-lg px-3 py-2.5 text-left text-ink hover:border-ink ${on ? 'border-2 border-accent bg-sel' : 'border border-line bg-white'}`;
@@ -244,9 +304,39 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
           </div>
         </Card>
       ) : (
+        <>
+        <Card title="Case parts" sub="Every part of this box's case: switch parts off, resize them, change their material or add your own"
+          right={<button onClick={resetParts} disabled={!type.case} className={pill} title={type.case ? '' : 'Already the category default'}>Reset to category default</button>}>
+          <CasePartsTable parts={parts} dims={previewDims} onChange={setParts} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setParts(addCasePart(parts, SINK_SKIRT))} className={pill}>+ Sink skirt</button>
+            <button onClick={() => setParts(addCasePart(parts, { key: 'rail', name: 'Rail', on: true, qty: '1', w: 'stretcherW', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' }))} className={pill}>+ Rail</button>
+            <button onClick={() => setParts(addCasePart(parts, { key: 'divider', name: 'Divider', on: true, qty: '1', w: 'inD', l: 'boxH', grain: 'Vertical', mat: 'case', band: 'l' }))} className={pill}>+ Divider</button>
+            <button onClick={() => setParts(addCasePart(parts, { key: 'part', name: 'Part', on: true, qty: '1', w: '4', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' }))} className={pill}>+ Other part</button>
+            <span className="mx-1 h-5 border-l border-line-2" />
+            <button onClick={() => setParts(parts.map(p => (INTERIOR.has(p.key) ? { ...p, mat: 'front' } : p)))} className={pill} title="Cut the ends, deck, top, shelves and partitions from the job's front material">Finished interior</button>
+          </div>
+          {preview && !preview.bad && (
+            <div className="flex flex-col gap-1 rounded-lg bg-canvas px-3 py-2 text-xs text-ink-3">
+              <div>
+                <span className="font-bold text-ink">Case at {fmt(preview.W)}&quot; wide:</span>{' '}
+                {preview.parts.length ? preview.parts.map(p => `${p.qty} × ${p.desc} ${fmt(p.w)} x ${fmt(p.l)}${p.mat === d.caseMat ? '' : ` (${p.mat})`}`).join(' · ') : 'no parts'}
+              </div>
+              {preview.skipped.map(m => <div key={m} className="text-danger">Not made · {m}</div>)}
+            </div>
+          )}
+          <details className="text-xs text-muted">
+            <summary className="cursor-pointer font-bold text-ink-3">Sizes: named dimensions and arithmetic</summary>
+            <div className="mt-1.5 grid gap-x-4 gap-y-0.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}>
+              {DIM_TOKENS.filter(([k]) => !/^face[B-P]$/.test(k)).map(([k, l]) => <div key={k}><code className="text-ink">{k}</code> {k === 'faceA' ? 'Height of face A (faceB, faceC… likewise)' : l}</div>)}
+            </div>
+            <div className="mt-1.5">Add or subtract with spaces around the sign: <code className="text-ink">faceA + 3/4</code>, <code className="text-ink">inW - 1/2</code>. Fractions as typed: 3/4, 1-1/2, 1 1/2. Quantity: a number, <code className="text-ink">auto</code> (what the layout needs) or <code className="text-ink">auto+1</code>.</div>
+          </details>
+        </Card>
         <Card title="Standard faces" sub="What a new cabinet of this box starts with · the same window as a job's Configure tab">
           <BoxFaces key={type.code} type={type} d={d} catalog={cfg.catalog} onFaces={faces => patchType(t => ({ ...t, faces }))} />
         </Card>
+        </>
       )}
       </>)}
     </div>

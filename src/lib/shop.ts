@@ -1,8 +1,9 @@
 // Shop-wide configuration edited on the Admin page: the materials table, the dropdown choices for
 // hardware, the panel saw settings and the construction methods. Stored as one JSON document in SQLite.
 import {
-  BOX_FIELD, BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, DEFAULT_PANEL, FACE_H_RULES, HARDWARE_FIELDS, MAT_SLOTS, PANEL_BANDS, RULE_KEYS, SAW_FIELDS, fmt, newFace, parseDim,
-  type BuildStyle, type CabCatalog, type CabCategory, type CabType, type DefaultKey, type FaceSpec, type FrontStyle, type Hinge, type JobMaterials, type Kind, type Material, type PanelSpec, type RawDefaults,
+  AUTO_SIZED, BAND_EDGES, BOX_FIELD, BUILD_STYLES, BUILTIN_CATALOG, DEFAULTS, DEFAULT_PANEL, DIM_TOKENS, FACE_H_RULES, HARDWARE_FIELDS, MAT_SLOTS, PANEL_BANDS, QTY_RE, RULE_KEYS, SAW_FIELDS, SINK_SKIRT, STANDARD_PARTS,
+  addCasePart, defaultCaseParts, evalDim, fmt, newFace, parseDim, sinkBaseParts,
+  type BandEdge, type BuildStyle, type CabCatalog, type CabCategory, type CabType, type CasePart, type CaseSpec, type DefaultKey, type FaceSpec, type FrontStyle, type Hinge, type JobMaterials, type Kind, type Material, type MatSlot, type PanelSpec, type RawDefaults,
 } from './engine';
 import { OPTIONS, PRESETS, type Preset } from './presets';
 
@@ -25,7 +26,7 @@ export interface SawSettings { kerf: string; edgeTrim: string }
 
 /** Bump `version` when a migration must run once on stored documents (see normalizeShopConfig). */
 export interface ShopConfig {
-  version: 4;
+  version: 5;
   /** Sheet goods in display order. */
   materials: Material[];
   /** Dropdown choices per hardware field, in display order. An empty list turns the field into free text. */
@@ -41,9 +42,11 @@ export interface ShopConfig {
   catalog: CabCatalog;
 }
 
+const cloneType = (t: CabType): CabType =>
+  ({ ...t, faces: t.faces.map(f => ({ ...f })), ...(t.case ? { case: { parts: t.case.parts.map(p => ({ ...p })) } } : {}), ...(t.panel ? { panel: { ...t.panel } } : {}) });
 export const cloneCatalog = (c: CabCatalog): CabCatalog => ({
   categories: c.categories.map(x => ({ ...x })),
-  types: c.types.map(t => ({ ...t, faces: t.faces.map(f => ({ ...f })) })),
+  types: c.types.map(cloneType),
 });
 
 const SHEET_W = fmt(DEFAULTS.sheetW), SHEET_L = fmt(DEFAULTS.sheetL);
@@ -57,7 +60,7 @@ export const BUILTIN_MATERIALS: Material[] = [
 /** The built-in materials, choices, saw settings and method the app ships with. */
 export function defaultShopConfig(): ShopConfig {
   return {
-    version: 4,
+    version: 5,
     materials: BUILTIN_MATERIALS.map(m => ({ ...m })),
     options: Object.fromEntries(OPTION_KEYS.map(k => [k, [...OPTIONS[k]!]])),
     doorStyles: BUILTIN_DOOR_STYLES.map(s => ({ ...s })),
@@ -185,6 +188,94 @@ export function normFace(raw: unknown): FaceSpec | null {
   };
 }
 
+/** Every token set to 1: enough to tell a readable size expression from one with an unknown term. */
+const DUMMY_DIMS: Record<string, number> = Object.fromEntries(DIM_TOKENS.map(([k]) => [k, 1]));
+/** A part size as typed: 'auto' where the engine sizes that field, else an expression whose terms all read. */
+const partSize = (v: unknown, key: string, k: 'w' | 'l'): string | null => {
+  const s = str(v).trim();
+  if (s === 'auto') return AUTO_SIZED[key]?.[k] ? s : null;
+  return isNaN(evalDim(s, DUMMY_DIMS)) ? null : s;
+};
+const STANDARD = new Set<string>(STANDARD_PARTS);
+const isV1Case = (o: Record<string, unknown>) => ['top', 'nailers', 'fixedShelves', 'extras'].some(k => k in o);
+
+/**
+ * Validate one case part. A standard part (a STANDARD_PARTS key) keeps its key and falls back to the category's
+ * default for a size that can't be read; a custom part with an unreadable size or no name is dropped. `taken` are
+ * the keys already used in the list, so every part keeps a key of its own.
+ */
+export function normCasePart(raw: unknown, style: BuildStyle, taken: Set<string>): CasePart | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const wantKey = str(o.key).trim();
+  const std = STANDARD.has(wantKey) && !taken.has(wantKey) ? defaultCaseParts(style).find(p => p.key === wantKey) : undefined;
+  // A custom key is kept as typed (letters, digits, dashes), or made from the name.
+  const keySlug = (v: string) => v.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  let key = std ? wantKey : keySlug(wantKey) || slug(str(o.name)) || 'p';
+  if (!std) { let n = 2; const base = key; while (taken.has(key) || STANDARD.has(key)) key = `${base}-${n++}`; }
+  const name = str(o.name).trim() || std?.name || '';
+  let w = partSize(o.w, key, 'w'), l = partSize(o.l, key, 'l');
+  if (std) { w ??= std.w; l ??= std.l; }
+  if (!name || !w || !l) return null;
+  if (AUTO_SIZED[key]?.w) w = 'auto';
+  if (AUTO_SIZED[key]?.l) l = 'auto';
+  const qtyRaw = str(o.qty).trim();
+  const qty = AUTO_SIZED[key]?.qty ? 'auto' : QTY_RE.test(qtyRaw) ? qtyRaw.replace(/\s+/g, '') : std?.qty ?? '1';
+  taken.add(key);
+  return {
+    key, name, on: o.on === undefined ? true : !!o.on, qty, w, l,
+    grain: o.grain === 'Horizontal' ? 'Horizontal' : 'Vertical',
+    mat: MAT_SLOTS.some(([k]) => k === o.mat) ? (o.mat as MatSlot) : std?.mat ?? 'case',
+    band: BAND_EDGES.some(([k]) => k === o.band) ? (o.band as BandEdge) : std?.band ?? 'none',
+  };
+}
+
+/** A case spec saved before boxes carried a parts list: top kind, nailer count, extra fixed shelves and extra parts. */
+function caseFromV1(o: Record<string, unknown>, style: BuildStyle): CasePart[] {
+  let parts = defaultCaseParts(style);
+  const set = (key: string, patch: Partial<CasePart>) => { parts = parts.map(p => (p.key === key ? { ...p, ...patch } : p)); };
+  if (o.top === 'full') { set('top', { on: true }); set('topStretcher', { on: false }); }
+  else if (o.top === 'none') { set('top', { on: false }); set('topStretcher', { on: false }); }
+  else if (o.top === 'stretchers') { set('top', { on: false }); set('topStretcher', { on: true }); }
+  if (o.nailers !== undefined && o.nailers !== null && o.nailers !== '') set('nailer', { qty: String(int(o.nailers, 1, 0, 4)) });
+  const extraShelves = int(o.fixedShelves, 0, 0, 8);
+  if (extraShelves > 0) set('fixedShelf', { qty: `auto+${extraShelves}` });
+  if (Array.isArray(o.extras)) {
+    for (const raw of o.extras) {
+      if (!raw || typeof raw !== 'object') continue;
+      const x = raw as Record<string, unknown>;
+      const name = str(x.name).trim(), w = str(x.w).trim(), l = str(x.l).trim();
+      if (!name || isNaN(evalDim(w, DUMMY_DIMS)) || isNaN(evalDim(l, DUMMY_DIMS))) continue;
+      // The old sink skirt (as tall as the false front) becomes the new one, which also stands in for the drawer stretcher.
+      if (/^sink skirt$/i.test(name) && w === 'smallFront' && l === 'inW') { parts = addCasePart(parts, SINK_SKIRT); set('drawerStretcher', { on: false }); continue; }
+      parts = addCasePart(parts, {
+        key: slug(name) || 'p', name, on: true, qty: String(int(x.qty, 1, 1, 20)), w, l,
+        grain: x.grain === 'Horizontal' ? 'Horizontal' : 'Vertical',
+        mat: MAT_SLOTS.some(([k]) => k === x.mat) ? (x.mat as MatSlot) : 'case',
+        band: x.band === 'all' || x.band === 'long' ? x.band : 'none',
+      });
+    }
+  }
+  return parts;
+}
+
+/**
+ * Validate a box's case parts list for a category style; undefined when it is the style's default (or empty), so the
+ * box follows its category. A spec in the old top/nailers/fixedShelves/extras shape is converted.
+ */
+export function normCase(raw: unknown, style: BuildStyle): CaseSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  let parts: CasePart[];
+  if (Array.isArray(o.parts)) {
+    const taken = new Set<string>();
+    parts = o.parts.map(p => normCasePart(p, style, taken)).filter((p): p is CasePart => !!p);
+  } else if (isV1Case(o)) parts = caseFromV1(o, style);
+  else return undefined;
+  if (!parts.length || JSON.stringify(parts) === JSON.stringify(defaultCaseParts(style))) return undefined;
+  return { parts };
+}
+
 /** Validate one box type against the given categories; null when it has no code. */
 export function normType(raw: unknown, cats: CabCategory[]): CabType | null {
   if (!raw || typeof raw !== 'object' || !cats.length) return null;
@@ -193,7 +284,8 @@ export function normType(raw: unknown, cats: CabCategory[]): CabType | null {
   if (!code) return null;
   const faces = Array.isArray(o.faces) ? o.faces.map(normFace).filter((f): f is FaceSpec => !!f) : [];
   const cat = cats.some(c => c.key === o.cat) ? (o.cat as string) : cats[0].key;
-  const isPanel = cats.find(c => c.key === cat)?.style === 'panel';
+  const style = cats.find(c => c.key === cat)?.style ?? 'base';
+  const isPanel = style === 'panel';
   const type: CabType = {
     code, cat,
     label: str(o.label).trim() || code,
@@ -204,6 +296,7 @@ export function normType(raw: unknown, cats: CabCategory[]): CabType | null {
   };
   const w = str(o.w).trim();
   if (parseDim(w) > 0) type.w = w;
+  if (!isPanel) { const c = normCase(o.case, style); if (c) type.case = c; }
   if (isPanel) {
     const p = (o.panel && typeof o.panel === 'object' ? o.panel : {}) as Record<string, unknown>;
     type.panel = {
@@ -237,7 +330,7 @@ export function normalizeCatalog(raw: unknown): CabCatalog {
       if (nt && !types.some(x => x.code === nt.code)) types.push(nt);
     }
   }
-  return { categories: cats, types: types.length ? types : BUILTIN_CATALOG.types.map(t => ({ ...t, cat: cats.some(c => c.key === t.cat) ? t.cat : cats[0].key, faces: t.faces.map(f => ({ ...f })) })) };
+  return { categories: cats, types: types.length ? types : BUILTIN_CATALOG.types.map(t => ({ ...cloneType(t), cat: cats.some(c => c.key === t.cat) ? t.cat : cats[0].key })) };
 }
 
 /** Validate untrusted JSON (request body or stored row) into a ShopConfig. Throws on unusable input. */
@@ -295,8 +388,16 @@ export function normalizeShopConfig(raw: unknown): ShopConfig {
       if (t.panel && t.panel.mat === 'front' && (t.code === 'TK' || /toe\s*kick/i.test(t.label))) t.panel = { ...t.panel, mat: 'toe' };
     }
   }
+  // Version 5 added per-box case parts. Sink bases saved before then get the sink base case once: a sink skirt in
+  // place of the drawer stretcher. (A spec saved in the first, top/nailers/extras shape is converted by normCase.)
+  if (version < 5) {
+    for (const t of catalog.types) {
+      const style = catalog.categories.find(c => c.key === t.cat)?.style ?? 'base';
+      if (!t.panel && !t.case && (t.code === 'SB' || t.code === 'VSB')) t.case = { parts: sinkBaseParts(style) };
+    }
+  }
   return {
-    version: 4, materials: materials.length ? materials : builtin.materials, options, saw,
+    version: 5, materials: materials.length ? materials : builtin.materials, options, saw,
     doorStyles: normStyles(r.doorStyles, normList(rawOpts.doorStyle), builtin.doorStyles),
     drawerFrontStyles: normStyles(r.drawerFrontStyles, normList(rawOpts.doorStyle), builtin.drawerFrontStyles),
     presets: presets.length ? presets : builtin.presets,

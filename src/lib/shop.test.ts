@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_CATALOG, newFace, type Material } from './engine';
+import { BUILTIN_CATALOG, SINK_SKIRT, defaultCaseParts, newFace, sinkBaseParts, type Material } from './engine';
 import { emptyJob, normalizeJobDoc } from './job';
 import { OPTIONS, PRESETS, isCustomized, presetFor, type Preset } from './presets';
-import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, defaultShopConfig, normStyle, normType, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
+import { BUILTIN_DOOR_STYLES, BUILTIN_DRAWER_FRONT_STYLES, BUILTIN_MATERIALS, OPTION_KEYS, defaultJobMaterials, cloneCatalog, defaultShopConfig, normCase, normCasePart, normStyle, normType, normalizeCatalog, normalizeShopConfig, optionsFor, presetKey, sameMaterial, type ShopConfig } from './shop';
 
 const M = (name: string, thk: string, w = '49', l = '97'): Material => ({ name, thk, w, l });
 const thin: Preset = { key: 'thin', label: 'Thin stretchers', blurb: '', values: { stretcherW: '3' } };
@@ -238,7 +238,7 @@ describe('accessory migration', () => {
   it('adds the Accessory panels once to a shop saved before version 3, and not again after', () => {
     const old = { version: 2, catalog: { categories: [{ key: 'base', label: 'Base', style: 'base' }], types: [{ code: 'B', cat: 'base', faces: [{ kind: 'door' }] }] } };
     const c = normalizeShopConfig(old);
-    expect(c.version).toBe(4);
+    expect(c.version).toBe(5);
     expect(c.catalog.categories.map(x => [x.key, x.style])).toEqual([['base', 'base'], ['accessory', 'panel']]);
     expect(c.catalog.types.map(t => t.code)).toEqual(['B', 'FIL', 'EP', 'TK']);
     // The admin removes them; a version-3 document stays as saved.
@@ -257,10 +257,91 @@ describe('toe kick material migration', () => {
       { code: 'FIL', cat: 'accessory', label: 'Filler', faces: [], panel: { mat: 'front', grain: 'Vertical', band: 'all' } },
     ];
     const c = normalizeShopConfig({ version: 3, catalog: { categories: cats, types } });
-    expect(c.version).toBe(4);
+    expect(c.version).toBe(5);
     expect(c.catalog.types.map(t => [t.code, t.panel?.mat])).toEqual([['TK', 'toe'], ['KICK', 'toe'], ['FIL', 'front']]);
     // A version-4 document is the admin's to decide: a toe kick deliberately cut from the front material stays.
     const kept = normalizeShopConfig({ version: 4, catalog: { categories: cats, types } });
     expect(kept.catalog.types[0].panel?.mat).toBe('front');
+  });
+});
+
+describe('case parts validation', () => {
+  const dflt = defaultCaseParts('base');
+  const skirt = { ...SINK_SKIRT };
+  it('keeps a readable parts list, drops the default, converts the old shape', () => {
+    expect(normCase(undefined, 'base')).toBeUndefined();
+    expect(normCase({}, 'base')).toBeUndefined();
+    expect(normCase({ parts: [] }, 'base')).toBeUndefined();
+    expect(normCase({ parts: dflt }, 'base')).toBeUndefined();
+    // The same list is not the default for another style.
+    expect(normCase({ parts: dflt }, 'wall')?.parts.find(p => p.key === 'top')?.on).toBe(false);
+    const c = normCase({ parts: [...dflt.map(p => (p.key === 'deck' ? { ...p, on: false } : p)), skirt] }, 'base')!;
+    expect(c.parts.find(p => p.key === 'deck')!.on).toBe(false);
+    expect(c.parts.at(-1)).toEqual(skirt);
+  });
+  it('cleans each part: standard parts keep their key and fall back to the default size, custom parts need a readable size', () => {
+    const taken = new Set<string>();
+    expect(normCasePart({ key: 'deck', on: false, qty: 'auto + 1', w: 'D - 1/4', l: 'bogus', mat: 'front', band: 'all' }, 'base', taken))
+      .toEqual({ key: 'deck', name: 'Deck', on: false, qty: 'auto+1', w: 'D - 1/4', l: 'inW', grain: 'Vertical', mat: 'front', band: 'all' });
+    // A second deck is a custom part; its key is made unique.
+    expect(normCasePart({ key: 'deck', name: 'Deck 2', w: 'D', l: 'inW' }, 'base', taken)!.key).toBe('deck-2');
+    expect(normCasePart({ key: 'back', name: 'Back', w: 'inW', l: '30', qty: '2' }, 'base', taken)).toMatchObject({ w: 'auto', l: 'auto', qty: '2' });
+    expect(normCasePart({ key: 'partition', qty: '4', w: 'inD', l: 'boxH' }, 'base', taken)).toMatchObject({ qty: 'auto', w: 'inD', l: 'auto' });
+    expect(normCasePart({ name: 'Rail', qty: 'lots', w: 'auto', l: 'inW' }, 'base', taken)).toBeNull();
+    expect(normCasePart({ name: 'Rail', qty: 'lots', w: 'faceC + 1', l: 'inW', grain: 'Horizontal', mat: 'toe', band: 'w' }, 'base', taken))
+      .toEqual({ key: 'rail', name: 'Rail', on: true, qty: '1', w: 'faceC + 1', l: 'inW', grain: 'Horizontal', mat: 'toe', band: 'w' });
+    expect(normCasePart({ name: 'Rail', w: 'stretcherW', l: 'inW' }, 'base', taken)!.key).toBe('rail-2');
+    expect(normCasePart({ name: 'Bad', w: 'zzz', l: 'inW' }, 'base', taken)).toBeNull();
+    expect(normCasePart({ w: '4', l: 'inW' }, 'base', taken)).toBeNull();
+  });
+  it('converts a spec saved in the old top/nailers/fixedShelves/extras shape', () => {
+    const find = (c: ReturnType<typeof normCase>, key: string) => c!.parts.find(p => p.key === key)!;
+    const full = normCase({ top: 'full', nailers: 0, fixedShelves: 2 }, 'base')!;
+    expect([find(full, 'top').on, find(full, 'topStretcher').on, find(full, 'nailer').qty, find(full, 'fixedShelf').qty]).toEqual([true, false, '0', 'auto+2']);
+    const none = normCase({ top: 'none' }, 'wall')!;
+    expect([find(none, 'top').on, find(none, 'topStretcher').on]).toEqual([false, false]);
+    const str = normCase({ top: 'stretchers', nailers: '7' }, 'tall')!;
+    expect([find(str, 'top').on, find(str, 'topStretcher').on, find(str, 'nailer').qty]).toEqual([false, true, '4']);
+    // A default-looking old spec is the default.
+    expect(normCase({ top: 'stretchers', nailers: 1 }, 'base')).toBeUndefined();
+    const ex = normCase({ extras: [
+      { name: 'Sink Skirt', w: 'smallFront', l: 'inW' }, { name: '', w: '4', l: 'inW' }, { name: 'Bad', w: 'zzz', l: 'inW' },
+      { name: 'Rail', qty: 30, w: '3 1/2', l: 'inW', grain: 'Horizontal', mat: 'toe', band: 'long' },
+    ] }, 'base')!;
+    expect(ex.parts.map(p => p.key)).toEqual([...dflt.map(p => p.key).slice(0, -1), 'sinkSkirt', 'rail', 'adjShelf']);
+    expect(find(ex, 'drawerStretcher').on).toBe(false);
+    expect(find(ex, 'sinkSkirt')).toEqual(skirt);
+    expect(find(ex, 'rail')).toEqual({ key: 'rail', name: 'Rail', on: true, qty: '20', w: '3 1/2', l: 'inW', grain: 'Horizontal', mat: 'toe', band: 'long' });
+  });
+  it('a box type carries its parts for its category only; the built-in sink bases have the sink base case', () => {
+    const cats = BUILTIN_CATALOG.categories;
+    expect(normType({ code: 'Q', cat: 'base', case: { top: 'none' } }, cats)!.case!.parts.find(p => p.key === 'top')!.on).toBe(false);
+    expect(normType({ code: 'P', cat: 'accessory', case: { top: 'none' } }, cats)!.case).toBeUndefined();
+    const sb = defaultShopConfig().catalog.types.find(t => t.code === 'SB')!;
+    expect(sb.case).toEqual({ parts: sinkBaseParts() });
+    expect(sb.case!.parts.find(p => p.key === 'drawerStretcher')!.on).toBe(false);
+    // Copies, not the built-in list.
+    const copy = cloneCatalog(BUILTIN_CATALOG);
+    copy.types.find(t => t.code === 'SB')!.case!.parts[0].name = 'x';
+    expect(BUILTIN_CATALOG.types.find(t => t.code === 'SB')!.case!.parts[0].name).toBe('Unfinished Left End');
+  });
+});
+
+describe('sink skirt migration', () => {
+  it('gives stored sink bases the sink base case once, leaving boxes with their own case spec alone', () => {
+    const cats = [{ key: 'base', label: 'Base', style: 'base' }];
+    const types = [{ code: 'SB', cat: 'base', faces: [{ kind: 'false' }, { kind: 'door' }] }, { code: 'VSB', cat: 'base', faces: [{ kind: 'door' }], case: { top: 'full' } }, { code: 'B', cat: 'base', faces: [{ kind: 'door' }] }];
+    const c = normalizeShopConfig({ version: 4, catalog: { categories: cats, types } });
+    expect(c.version).toBe(5);
+    expect(c.catalog.types[0].case).toEqual({ parts: sinkBaseParts() });
+    expect(c.catalog.types[1].case!.parts.find(p => p.key === 'top')!.on).toBe(true);
+    expect(c.catalog.types[2].case).toBeUndefined();
+    const again = normalizeShopConfig({ ...c, catalog: { categories: cats, types: [{ code: 'SB', cat: 'base', faces: [{ kind: 'door' }] }] } });
+    expect(again.catalog.types[0].case).toBeUndefined();
+    // A version-5 row saved with the first case shape (a skirt as an extra) converts by shape.
+    const v5 = normalizeShopConfig({ version: 5, catalog: { categories: cats, types: [{ code: 'SB', cat: 'base', faces: [{ kind: 'door' }], case: { top: 'none', extras: [{ name: 'Sink Skirt', qty: 1, w: 'smallFront', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' }] } }] } });
+    const parts = v5.catalog.types[0].case!.parts;
+    expect(parts.find(p => p.key === 'sinkSkirt')!.w).toBe('faceA + 3/4');
+    expect([parts.find(p => p.key === 'top')!.on, parts.find(p => p.key === 'topStretcher')!.on, parts.find(p => p.key === 'drawerStretcher')!.on]).toEqual([false, false, false]);
   });
 });

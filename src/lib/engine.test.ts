@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_CATALOG, buildJob, defaultLayout, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, sheetTotals, type CabCatalog } from './engine';
+import { BUILTIN_CATALOG, SINK_SKIRT, addCasePart, buildJob, defaultCaseParts, defaultLayout, evalDim, facesFromSections, fmt, newFace, newSection, parseDim, resolveDefaults, resolveFaces, resolveQty, sheetTotals, type CabCatalog, type CabInput, type CasePart } from './engine';
 import { emptyJob, normalizeJobDoc, sampleJob } from './job';
 import { PRESETS, isCustomized, type Preset } from './presets';
 import { defaultShopConfig } from './shop';
@@ -480,5 +480,111 @@ describe('accessories (cut panels)', () => {
     const catalog: CabCatalog = { ...BUILTIN_CATALOG, types: [...BUILTIN_CATALOG.types, { code: 'SHF', cat: 'accessory', label: 'Loose shelf', img: '', h: '12', d: '0', toe: '0', faces: [], w: '30', panel: { mat: 'case', grain: 'Horizontal', band: 'all' } }] };
     const p = buildJob([{ id: 1, type: 'SHF', w: '30', h: '12', d: '', toe: '', qty: '1' }], {}, 'fraction', null, catalog).cabs[0].parts[0];
     expect(p).toMatchObject({ mat: '3/4 2s Melamine', grain: 'Horizontal', band: 84 });
+  });
+});
+
+describe('case part sizes and counts', () => {
+  const ctx = { inW: 28.5, faceA: 6.1875, inD: 23 };
+  it('reads a token, a dimension, or terms added and subtracted with spaces around the sign', () => {
+    expect(evalDim('inW', ctx)).toBe(28.5);
+    expect(evalDim('3 1/2', ctx)).toBe(3.5);
+    expect(evalDim('inW - 1/2', ctx)).toBe(28);
+    expect(evalDim('faceA + 3/4', ctx)).toBe(6.9375);
+    expect(evalDim('inW − 1', ctx)).toBe(27.5);
+    expect(evalDim('inD - 1 + 1/4', ctx)).toBe(22.25);
+    // A mixed number keeps its dash; an unknown term or nothing at all is unreadable.
+    expect(evalDim('1-1/2', ctx)).toBe(1.5);
+    expect(evalDim('faceC + 1', ctx)).toBeNaN();
+    expect(evalDim('', ctx)).toBeNaN();
+    expect(evalDim('toString', ctx)).toBeNaN();
+  });
+  it('counts auto, auto+N or a number', () => {
+    expect([resolveQty('auto', 2), resolveQty('auto+1', 2), resolveQty('auto + 2', 0), resolveQty('3', 2), resolveQty('0', 2), resolveQty('x', 2)]).toEqual([2, 3, 2, 3, 0, 0]);
+  });
+});
+
+describe('case parts per box', () => {
+  const d = resolveDefaults();
+  const names = (parts: { qty: number; desc: string }[]) => parts.map(p => `${p.qty} ${p.desc}`);
+  const base: CabInput = { id: 1, type: 'B', w: '30', h: '34 1/2', d: '24', toe: '4 1/2', qty: '1' };
+  const build = (cab: CabInput, catalog?: CabCatalog) => buildJob([cab], {}, 'fraction', null, catalog).cabs[0];
+  /** A copy of box `from` as code X with the given parts list. */
+  const withParts = (parts: CasePart[], from = 'B') => ({
+    ...BUILTIN_CATALOG, types: [...BUILTIN_CATALOG.types, { ...BUILTIN_CATALOG.types.find(t => t.code === from)!, code: 'X', case: { parts } }],
+  });
+  const edit = (style: 'base' | 'wall' | 'tall', fn: (p: CasePart) => Partial<CasePart> | null) =>
+    defaultCaseParts(style).map(p => ({ ...p, ...(fn(p) ?? {}) }));
+
+  it('the default parts list builds exactly what the style built: same parts, same order', () => {
+    expect(names(build(base).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Deck', '1 Nailer', '2 Top Stretcher', '1 Drawer Stretcher', '1 Adjustable Shelf']);
+    expect(names(build({ ...base, type: '3DB', w: '15', h: '30', d: '21', toe: '0' }).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Deck', '1 Nailer', '2 Top Stretcher', '1 Drawer Stretcher']);
+    expect(names(build({ ...base, type: 'W', h: '30', d: '12', toe: '0' }).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Bottom', '1 Top', '2 Nailer', '2 Adjustable Shelf']);
+    // An explicit copy of the default is the same build.
+    expect(build({ ...base, type: 'X' }, withParts(defaultCaseParts('base'))).parts).toEqual(build(base).parts);
+  });
+
+  it('sink bases get a sink skirt 3/4" taller than the false front in place of the drawer stretcher', () => {
+    for (const type of ['SB', 'VSB']) {
+      const sb = build({ ...base, type });
+      const skirt = sb.parts.find(p => p.desc === 'Sink Skirt')!;
+      expect([skirt.qty, skirt.w, skirt.l, skirt.grain, skirt.mat, skirt.band]).toEqual([1, d.smallFront + 0.75, 28.5, 'Vertical', '3/4 2s Melamine', 0]);
+      expect(sb.parts.some(p => p.desc === 'Drawer Stretcher')).toBe(false);
+    }
+    // The skirt follows face A as the job lays it out; other built-ins have no skirt.
+    const custom = build({ ...base, type: 'SB', layout: [newSection('false', '8'), newSection('door')] });
+    expect(custom.parts.find(p => p.desc === 'Sink Skirt')!.w).toBe(8.75);
+    expect(build(base).parts.some(p => p.desc === 'Sink Skirt')).toBe(false);
+  });
+
+  it('parts can be switched off: a wall bookcase with no bottom, a base with a full top and no nailer', () => {
+    const noBottom = build({ ...base, type: 'X', h: '30', d: '12', toe: '0' }, withParts(edit('wall', p => (p.key === 'deck' ? { on: false } : null)), 'W'));
+    expect(noBottom.parts.some(p => p.desc === 'Bottom')).toBe(false);
+    expect(names(noBottom.parts)).toContain('1 Top');
+    const full = build({ ...base, type: 'X' }, withParts(edit('base', p => (p.key === 'top' ? { on: true } : p.key === 'topStretcher' ? { on: false } : p.key === 'nailer' ? { qty: '0' } : null))));
+    expect(names(full.parts)).toContain('1 Top');
+    expect(full.parts.some(p => /Stretcher$|Nailer/.test(p.desc) && p.desc !== 'Drawer Stretcher')).toBe(false);
+    expect(names(full.parts)).toContain('1 Drawer Stretcher');
+  });
+
+  it('counts add to what the layout needs; a finished interior cuts from the front material', () => {
+    const parts = edit('tall', p => (p.key === 'fixedShelf' ? { qty: 'auto+2' } : p.key === 'adjShelf' ? { qty: 'auto+1', mat: 'front' } : ['leftEnd', 'rightEnd', 'deck', 'top'].includes(p.key) ? { mat: 'front' } : null));
+    const cab = build({ ...base, type: 'X', h: '84' }, withParts(parts, 'T'));
+    // One fixed shelf between the stacked doors, plus two; four adjustable shelves, plus one, with pins to match.
+    expect(cab.parts.find(p => p.desc === 'Fixed Shelf')!.qty).toBe(3);
+    expect(cab.parts.find(p => p.desc === 'Adjustable Shelf')!).toMatchObject({ qty: 5, mat: d.frontMat });
+    expect(cab.hardware.find(h => h.item === 'Shelf Pin')!.qty).toBe(20);
+    expect(cab.parts.find(p => p.desc === 'Unfinished Left End')!.mat).toBe(d.frontMat);
+    expect(cab.parts.find(p => p.desc === 'Unfinished Back')!.mat).toBe(d.backMat);
+    // No adjustable shelf part, no pins.
+    const bare = build({ ...base, type: 'X', h: '84' }, withParts(edit('tall', p => (p.key === 'adjShelf' ? { on: false } : null)), 'T'));
+    expect(bare.hardware.some(h => h.item === 'Shelf Pin')).toBe(false);
+  });
+
+  it('custom parts are sized from expressions and banded on the chosen edges; unreadable sizes are skipped and reported', () => {
+    let parts = addCasePart(defaultCaseParts('base'), { key: 'divider', name: 'Divider', on: true, qty: '1', w: 'inD', l: 'boxH', grain: 'Vertical', mat: 'case', band: 'long' });
+    parts = addCasePart(parts, { key: 'rail', name: 'Oven rail', on: true, qty: '2', w: '3', l: 'inW - 1/2', grain: 'Horizontal', mat: 'front', band: 'all' });
+    parts = addCasePart(parts, { key: 'rail', name: 'Lip', on: true, qty: '1', w: 'faceA + 3/4', l: 'inW', grain: 'Vertical', mat: 'case', band: 'll' });
+    parts = addCasePart(parts, { key: 'bad', name: 'Skipped', on: true, qty: '1', w: 'nonsense', l: 'inW', grain: 'Vertical', mat: 'case', band: 'w' });
+    parts = addCasePart(parts, { key: 'off', name: 'Off', on: false, qty: '1', w: 'nonsense', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' });
+    expect(parts.map(p => p.key).slice(-6)).toEqual(['divider', 'rail', 'rail-2', 'bad', 'off', 'adjShelf']);
+    const cab = build({ ...base, type: 'X' }, withParts(parts));
+    const div = cab.parts.find(p => p.desc === 'Divider')!;
+    expect([div.w, div.l, div.band]).toEqual([24 - 0.75 - 0.25, 30, 30]);
+    const rail = cab.parts.find(p => p.desc === 'Oven rail')!;
+    expect([rail.qty, rail.w, rail.l, rail.grain, rail.mat, rail.band]).toEqual([2, 3, 28, 'Horizontal', '3/4 2s Melamine', 2 * (3 + 28)]);
+    const lip = cab.parts.find(p => p.desc === 'Lip')!;
+    expect([lip.w, lip.band]).toEqual([d.smallFront + 0.75, 2 * 28.5]);
+    expect(cab.parts.some(p => p.desc === 'Skipped' || p.desc === 'Off')).toBe(false);
+    expect(cab.skipped).toEqual(['Skipped: can\'t read width "nonsense"']);
+    // Custom parts come before the adjustable shelf, as the list orders them.
+    expect(names(cab.parts).slice(-2)).toEqual(['1 Lip', '1 Adjustable Shelf']);
+  });
+
+  it('partitions follow the split drawer sections whatever the list says', () => {
+    const parts = edit('base', p => (p.key === 'partition' ? { qty: '5', l: 'auto', mat: 'front', band: 'none' } : null));
+    const cab = build({ ...base, type: 'X', layout: [newSection('drawer', '6', { split: 3 }), newSection('door')] }, withParts(parts));
+    const part = cab.parts.find(p => p.desc === 'Drawer Partition')!;
+    expect([part.qty, part.w, part.l, part.mat, part.band]).toEqual([2, 23, 6.125, d.frontMat, 0]);
+    expect(SINK_SKIRT.w).toBe('faceA + 3/4');
   });
 });
