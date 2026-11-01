@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULTS, RULE_FIELDS, fmt, parseDim, type DefaultKey, type RawDefaults } from '@/lib/engine';
+import { DEFAULTS, RULE_FIELDS, RULE_GROUPS, fmt, parseDim, type DefaultKey, type RawDefaults } from '@/lib/engine';
 import type { Preset } from '@/lib/presets';
 import type { ShopConfig } from '@/lib/shop';
 import type { Update } from './AdminApp';
@@ -119,19 +119,24 @@ export function MethodsEditor({ cfg, update }: { cfg: ShopConfig; update: Update
           Reset rules to app defaults
         </button>
       }>
-        <div className="grid gap-x-3.5 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
-          {RULE_FIELDS.map(([k, label]) => {
-            const changed = overrides(sel.values, k);
-            return (
-              <label key={k} className={`flex items-center justify-between gap-2 text-[13px] ${changed ? 'font-bold text-ink' : 'text-ink-2'}`}>
-                {label}
-                <input value={sel.values[k] ?? fmt(ruleDefault(k))} onChange={e => setValue(k, e.target.value)} onBlur={() => commitRule(k)}
-                  title={`App default ${fmt(ruleDefault(k))}`}
-                  className={`field w-[76px] px-1.5 py-1.5 text-center text-[13px] ${changed ? 'border-accent' : ''}`} />
-              </label>
-            );
-          })}
-        </div>
+        {RULE_GROUPS.map(g => (
+          <div key={g.label} className="flex flex-col gap-2 rounded-lg bg-canvas px-3.5 py-3">
+            <div className="eyebrow text-[10px]">{g.label}</div>
+            <div className="grid gap-x-5 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}>
+              {g.fields.map(([k, label]) => {
+                const changed = overrides(sel.values, k);
+                return (
+                  <label key={k} className={`flex items-center justify-between gap-2 text-[13px] ${changed ? 'font-bold text-ink' : 'text-ink-2'}`}>
+                    {label}
+                    <input value={sel.values[k] ?? fmt(ruleDefault(k))} onChange={e => setValue(k, e.target.value)} onBlur={() => commitRule(k)}
+                      title={`App default ${fmt(ruleDefault(k))}`}
+                      className={`field w-[76px] bg-white px-1.5 py-1.5 text-center text-[13px] ${changed ? 'border-accent' : ''}`} />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </Card>
     </div>
   );

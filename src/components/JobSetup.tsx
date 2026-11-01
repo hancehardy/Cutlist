@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_FIELDS, type Banding, type DefaultKey, type DimFormat, type Fmt, type FrontStyle, type JobBanding, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
+import { BOX_FIELD, DEFAULTS, HARDWARE_FIELDS, MAT_SLOTS, RULE_GROUPS, type Banding, type DefaultKey, type DimFormat, type Fmt, type FrontStyle, type JobBanding, type JobFronts, type JobMaterials, type MatSlot, type Material, type RawDefaults } from '@/lib/engine';
 import type { JobInfo } from '@/lib/job';
 import { isCustomized, presetFor, type Preset } from '@/lib/presets';
 import { optionsFor, type ShopOptions } from '@/lib/shop';
@@ -131,14 +131,19 @@ export function JobSetup({ job, method, defaults, materials, banding, fronts, f,
             Reset rules to {label}
           </button>
         </div>
-        <div className="grid gap-x-3.5 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))' }}>
-          {RULE_FIELDS.map(([k, lab]) => (
-            <label key={k} className="flex items-center justify-between gap-2 text-[13px] text-ink-2">
-              {lab}
-              <input value={defaults[k] ?? f(DEFAULTS[k] as number)} onChange={e => onDefault(k, e.target.value)} className="field w-[76px] px-1.5 py-1.5 text-center text-[13px]" />
-            </label>
-          ))}
-        </div>
+        {RULE_GROUPS.map(g => (
+          <div key={g.label} className="flex flex-col gap-2 rounded-lg bg-canvas px-3.5 py-3">
+            <div className="eyebrow text-[10px]">{g.label}</div>
+            <div className="grid gap-x-5 gap-y-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}>
+              {g.fields.map(([k, lab]) => (
+                <label key={k} className="flex items-center justify-between gap-2 text-[13px] text-ink-2">
+                  {lab}
+                  <input value={defaults[k] ?? f(DEFAULTS[k] as number)} onChange={e => onDefault(k, e.target.value)} className="field w-[76px] bg-white px-1.5 py-1.5 text-center text-[13px]" />
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
       </Section>
 
       <Section step={3} title="Materials" sub="Thickness and sheet size come with each material. Choose Other… to type your own.">

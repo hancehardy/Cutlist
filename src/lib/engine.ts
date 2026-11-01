@@ -235,14 +235,22 @@ export type DefaultKey = keyof DefaultsShape;
 export type RawDefaults = Partial<Record<DefaultKey, string>>;
 
 /** Construction rules a method sets. Thickness and sheet size come from the materials, kerf and edge trim from the shop's saw settings. */
-export const RULE_FIELDS: [DefaultKey, string][] = [
-  ['backGroove', 'Back groove depth'], ['backInset', 'Back inset from rear edge'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'],
-  ['frontGap', 'Gap between fronts'], ['sideReveal', 'Side reveal (each)'], ['topReveal', 'Top reveal'], ['bottomReveal', 'Bottom reveal'],
-  ['smallFront', 'Top drawer front height'], ['glideClear', 'Drawer guide clearance (both sides)'], ['smallBoxH', 'Small box height'], ['bigBoxH', 'Large box height'], ['xlBoxH', 'Extra-large box height'],
-  ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
-  ['glideDeduct', 'Glide deduct from depth'], ['doorSplit', 'Two doors above width'], ['tallLowerDoor', 'Tall lower door height'],
-  ['shelfSetback', 'Shelf setback'],
+/** The construction rules a method sets, in the three groups the setup and admin pages show them in. */
+export const RULE_GROUPS: { label: string; fields: [DefaultKey, string][] }[] = [
+  { label: 'Case', fields: [
+    ['backGroove', 'Back groove depth'], ['backInset', 'Back inset from rear edge'], ['stretcherW', 'Stretcher width'], ['toeRecess', 'Toe recess'], ['shelfSetback', 'Shelf setback'],
+  ] },
+  { label: 'Fronts and reveals', fields: [
+    ['sideReveal', 'Side reveal (each)'], ['topReveal', 'Top reveal'], ['bottomReveal', 'Bottom reveal'], ['frontGap', 'Gap between fronts'],
+    ['smallFront', 'Top drawer front height'], ['tallLowerDoor', 'Tall lower door height'], ['doorSplit', 'Two doors above width'],
+  ] },
+  { label: 'Drawer boxes and roll-outs', fields: [
+    ['glideClear', 'Drawer guide clearance (both sides)'], ['glideDeduct', 'Glide deduct from depth'],
+    ['smallBoxH', 'Small drawer box height'], ['bigBoxH', 'Large drawer box height'], ['xlBoxH', 'Extra-large drawer box height'],
+    ['rolloutH', 'Roll-out height'], ['rolloutSpacer', 'Roll-out spacer (hinge side)'],
+  ] },
 ];
+export const RULE_FIELDS: [DefaultKey, string][] = RULE_GROUPS.flatMap(g => g.fields);
 export const RULE_KEYS = new Set<DefaultKey>(RULE_FIELDS.map(f => f[0]));
 
 /**
