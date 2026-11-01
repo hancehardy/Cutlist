@@ -164,16 +164,16 @@ describe('materials', () => {
   const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
 
   it('takes case and back thickness from the materials', () => {
-    const job = buildJob([cab], {}, 'fraction', { case: M('Ply', '0.71'), back: M('Thin', '1/2'), front: M('Ply', '0.71') });
+    const job = buildJob([cab], {}, 'fraction', { case: M('Ply', '0.71'), back: M('Thin', '1/2'), front: M('Ply', '0.71'), toe: M('Thin', '1/2') });
     expect([job.d.caseThk, job.d.backThk]).toEqual([0.71, 0.5]);
     expect(job.cabs[0].parts.find(p => p.desc === 'Deck')!.l).toBeCloseTo(15 - 2 * 0.71);
     expect(job.materials.map(m => m.name)).toEqual(['Thin', 'Ply']);
     // Bad dimensions fall back to the app defaults.
-    expect(buildJob([cab], {}, 'fraction', { case: M('Ply', 'x'), back: M('Thin', '0'), front: M('Ply', '') }).d.caseThk).toBe(0.75);
+    expect(buildJob([cab], {}, 'fraction', { case: M('Ply', 'x'), back: M('Thin', '0'), front: M('Ply', ''), toe: M('Thin', '0') }).d.caseThk).toBe(0.75);
   });
 
   it('plans each material on its own sheet; the case wins a name clash', () => {
-    const job = buildJob([cab], {}, 'fraction', { case: M('A', '3/4'), back: M('B', '1/4', '60', '60'), front: M('A', '3/4', '48', '96') });
+    const job = buildJob([cab], {}, 'fraction', { case: M('A', '3/4'), back: M('B', '1/4', '60', '60'), front: M('A', '3/4', '48', '96'), toe: M('B', '1/4', '60', '60') });
     const plan = (n: string) => job.sawPlans.find(p => p.name === n)!;
     expect([plan('B').L, plan('B').W]).toEqual([60, 60]);
     expect([plan('A').L, plan('A').W]).toEqual([97, 49]);
@@ -463,9 +463,14 @@ describe('accessories (cut panels)', () => {
     expect(c.label).toBe('3" x 34 1/2" Filler');
   });
 
-  it('a toe kick skin runs horizontal with no banding; an end panel bands its long edge', () => {
+  it('a toe kick skin is cut from the toe kick material, runs horizontal with no banding; an end panel bands its long edge', () => {
     const tk = build('TK', '96', '4 1/2').cabs[0].parts[0];
-    expect(tk).toMatchObject({ desc: 'Toe kick skin', w: 96, l: 4.5, grain: 'Horizontal', band: 0 });
+    expect(tk).toMatchObject({ desc: 'Toe kick skin', w: 96, l: 4.5, grain: 'Horizontal', band: 0, mat: '1/4 1s Melamine' });
+    const M = (name: string, thk: string, w = '49', l = '97') => ({ name, thk, w, l });
+    const mats = { case: M('Case', '3/4'), back: M('Back', '1/4'), front: M('Front', '3/4'), toe: M('Skin', '1/4', '48', '96') };
+    const skin = buildJob([{ id: 1, type: 'TK', w: '96', h: '4 1/2', d: '', toe: '', qty: '1' }], {}, 'fraction', mats);
+    expect(skin.cabs[0].parts[0].mat).toBe('Skin');
+    expect(skin.sawPlans.map(p => [p.name, p.L, p.W])).toEqual([['Skin', 96, 48]]);
     const ep = build('EP', '24', '34 1/2').cabs[0].parts[0];
     expect(ep).toMatchObject({ desc: 'End panel', w: 24, l: 34.5, grain: 'Vertical', band: 34.5 });
   });

@@ -44,7 +44,7 @@ export function sampleJob(): JobDoc {
     ],
     dimFormat: 'fraction',
     method: PRESETS[0].key,
-    materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 } },
+    materials: { case: { ...MELAMINE_34 }, back: { ...MELAMINE_14 }, front: { ...MELAMINE_34 }, toe: { ...MELAMINE_14 } },
     fronts: { door: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' }, drawer: { name: 'Slab (Melamine)', slab: true, grain: 'Vertical' } },
     setupDone: true,
   };
@@ -82,7 +82,7 @@ function normSection(s: unknown): SectionInput | null {
 }
 
 /** Rule keys that used to live in a job's defaults and now come from its materials or the shop's saw settings. */
-const MOVED_KEYS = ['caseMat', 'backMat', 'frontMat', 'caseThk', 'backThk', 'sheetL', 'sheetW', 'kerf', 'edgeTrim', 'doorStyle'] as const;
+const MOVED_KEYS = ['caseMat', 'backMat', 'frontMat', 'toeMat', 'caseThk', 'backThk', 'sheetL', 'sheetW', 'kerf', 'edgeTrim', 'doorStyle'] as const;
 
 /** Front styles for a job saved before they existed: its old door style name, looked up in the shop's lists. */
 function migrateFronts(defaults: RawDefaults, shop: ShopConfig): JobFronts {
@@ -107,6 +107,8 @@ function migrateMaterials(defaults: RawDefaults, shop: ShopConfig): JobMaterials
     case: one(caseName, defaults.caseThk),
     back: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
     front: one(frontName, defaults.caseThk),
+    // Toe kick skins did not have their own material before; start from the back material.
+    toe: { ...one(backName, defaults.backThk), thk: defaults.backThk || materialByName(shop.materials, backName)?.thk || fmt(DEFAULTS.backThk) },
   };
 }
 
@@ -133,7 +135,8 @@ export function normalizeJobDoc(raw: unknown, shop: ShopConfig = defaultShopConf
   if (r.materials && typeof r.materials === 'object') {
     const m = r.materials as Record<string, unknown>;
     const c = normMaterial(m.case), b = normMaterial(m.back), f = normMaterial(m.front);
-    if (c && b && f) materials = { case: c, back: b, front: f };
+    // Jobs saved before the toe kick material existed use their back material for it.
+    if (c && b && f) materials = { case: c, back: b, front: f, toe: normMaterial(m.toe) ?? { ...b } };
   }
   if (!materials) materials = migrateMaterials(defaults, shop);
   let fronts: JobFronts | null = null;

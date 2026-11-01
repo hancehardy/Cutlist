@@ -96,15 +96,18 @@ describe('jobs on shop settings', () => {
     expect(doc.method).toBe('thin');
     expect(doc.defaults).toMatchObject({ stretcherW: '3', pull: 'Knob', hinge: OPTIONS.hinge![0] });
     // First material for the case and fronts, thinnest for the back.
-    expect(doc.materials).toEqual({ case: M('Ply', '0.71'), back: M('Back', '1/4'), front: M('Ply', '0.71') });
+    expect(doc.materials).toEqual({ case: M('Ply', '0.71'), back: M('Back', '1/4'), front: M('Ply', '0.71'), toe: M('Back', '1/4') });
     expect(isCustomized(doc.method, doc.defaults, shop.presets)).toBe(false);
     expect(isCustomized(doc.method, { ...doc.defaults, stretcherW: '4' }, shop.presets)).toBe(true);
     expect(defaultJobMaterials([]).case.name).toBe('3/4 2s Melamine');
   });
 
   it('keeps a job\'s own material copies and rebuilds incomplete ones', () => {
-    const m = { case: M('X', '5/8', '48', '96'), back: M('Y', '1/8'), front: M('Z', '3/4') };
+    const m = { case: M('X', '5/8', '48', '96'), back: M('Y', '1/8'), front: M('Z', '3/4'), toe: M('T', '1/4') };
     expect(normalizeJobDoc({ cabs: [], materials: m }, shop).materials).toEqual(m);
+    // A job saved before the toe kick material existed uses its back material for it.
+    const { toe: _t, ...three } = m; void _t;
+    expect(normalizeJobDoc({ cabs: [], materials: three }, shop).materials.toe).toEqual(m.back);
     expect(normalizeJobDoc({ cabs: [], materials: { case: m.case } }, shop).materials.case.name).toBe('3/4 2s Melamine');
   });
 
@@ -116,6 +119,7 @@ describe('jobs on shop settings', () => {
       case: M('Ply', '0.71', '49', '120'),
       back: M('1/4 1s Melamine', '1/4', '49', '120'),
       front: M('New', '0.71', '49', '120'),
+      toe: M('1/4 1s Melamine', '1/4', '49', '120'),
     });
     // Material, sheet and saw keys leave the job's rules; hardware and real rules stay.
     expect(doc.defaults).toEqual({ pull: 'Knob', stretcherW: '3' });
@@ -221,7 +225,7 @@ describe('accessory boxes in the catalog', () => {
   it('ships an Accessory category of panels and validates panel settings', () => {
     const c = defaultShopConfig().catalog;
     expect(c.categories.find(x => x.key === 'accessory')?.style).toBe('panel');
-    expect(c.types.filter(t => t.cat === 'accessory').map(t => [t.code, t.w, t.panel?.band])).toEqual([['FIL', '3', 'long'], ['EP', '24', 'long'], ['TK', '96', 'none']]);
+    expect(c.types.filter(t => t.cat === 'accessory').map(t => [t.code, t.w, t.panel?.band, t.panel?.mat])).toEqual([['FIL', '3', 'long', 'front'], ['EP', '24', 'long', 'front'], ['TK', '96', 'none', 'toe']]);
     const n = normType({ code: 'X', cat: 'accessory', faces: [{ kind: 'door' }], d: '24', toe: '4', w: 'abc', panel: { mat: 'nowhere', grain: 'Horizontal', band: 'some' } }, c.categories)!;
     expect(n).toMatchObject({ faces: [], d: '0', toe: '0', panel: { mat: 'front', grain: 'Horizontal', band: 'long' } });
     expect(n.w).toBeUndefined();

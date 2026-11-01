@@ -111,7 +111,7 @@ export const BUILTIN_TYPES: CabType[] = [
   T('V3DB', 'vanity', 'van-3d', '3 drawer', '30', '21', '0', [F('drawer', 'smallFront'), F('drawer'), F('drawer')]),
   A('FIL', 'Filler', '3', '34 1/2'),
   A('EP', 'End panel', '24', '34 1/2'),
-  A('TK', 'Toe kick skin', '96', '4 1/2', { grain: 'Horizontal', band: 'none' }),
+  A('TK', 'Toe kick skin', '96', '4 1/2', { mat: 'toe', grain: 'Horizontal', band: 'none' }),
 ];
 export const BUILTIN_CATALOG: CabCatalog = { categories: BUILTIN_CATEGORIES, types: BUILTIN_TYPES };
 
@@ -127,7 +127,7 @@ export const DEFAULTS = {
   rolloutH: 3.5, rolloutSpacer: 1,
   glideSeries: '563H', glideLens: '9, 12, 15, 18, 21', glideDeduct: 3,
   kerf: 0.187, sheetL: 97, sheetW: 49, edgeTrim: 0.25,
-  caseMat: '3/4 2s Melamine', backMat: '1/4 1s Melamine', frontMat: '3/4 2s Melamine',
+  caseMat: '3/4 2s Melamine', backMat: '1/4 1s Melamine', frontMat: '3/4 2s Melamine', toeMat: '1/4 1s Melamine',
   doorSplit: 24, tallLowerDoor: 30, pull: '4in C-Pull', hinge: 'Blum 110° Clip-top', shelfSetback: 1, shelfClear: 0.0625,
   drawerStyle: '5 Piece Drawer', doorStyle: 'Slab (Melamine)',
 };
@@ -157,8 +157,8 @@ const NUM_KEYS = new Set<DefaultKey>((Object.keys(DEFAULTS) as DefaultKey[]).fil
 
 /** A sheet good: name, thickness and stock sheet size, in inches as typed. */
 export interface Material { name: string; thk: string; w: string; l: string }
-export type MatSlot = 'case' | 'back' | 'front';
-export const MAT_SLOTS: [MatSlot, string][] = [['case', 'Case material'], ['back', 'Back material'], ['front', 'Front material']];
+export type MatSlot = 'case' | 'back' | 'front' | 'toe';
+export const MAT_SLOTS: [MatSlot, string][] = [['case', 'Case material'], ['back', 'Back material'], ['front', 'Front material'], ['toe', 'Toe kick material']];
 /** The materials a job is built from: thickness drives the case and back rules, sheet size drives the saw plan. */
 export type JobMaterials = Record<MatSlot, Material>;
 
@@ -191,10 +191,11 @@ export function resolveDefaults(raw?: RawDefaults | null, materials?: JobMateria
     r.caseMat = materials.case.name.trim() || DEFAULTS.caseMat;
     r.backMat = materials.back.name.trim() || DEFAULTS.backMat;
     r.frontMat = materials.front.name.trim() || DEFAULTS.frontMat;
+    r.toeMat = materials.toe.name.trim() || DEFAULTS.toeMat;
     r.caseThk = posDim(materials.case.thk, DEFAULTS.caseThk);
     r.backThk = posDim(materials.back.thk, DEFAULTS.backThk);
     // Sheet size per material name; when two slots share a name the case wins (it has the most parts).
-    for (const [slot, name] of [['case', r.caseMat], ['back', r.backMat], ['front', r.frontMat]] as [MatSlot, string][]) {
+    for (const [slot, name] of [['case', r.caseMat], ['back', r.backMat], ['front', r.frontMat], ['toe', r.toeMat]] as [MatSlot, string][]) {
       const m = materials[slot];
       if (!(name in r.sheets)) r.sheets[name] = { L: posDim(m.l, r.sheetL), W: posDim(m.w, r.sheetW) };
     }
@@ -290,7 +291,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   if (panel) {
     // An accessory is one panel W wide by H high in the chosen job material; no case, faces or hardware.
     const spec = t.panel ?? DEFAULT_PANEL;
-    const mat = spec.mat === 'case' ? d.caseMat : spec.mat === 'back' ? d.backMat : d.frontMat;
+    const mat = spec.mat === 'case' ? d.caseMat : spec.mat === 'back' ? d.backMat : spec.mat === 'toe' ? d.toeMat : d.frontMat;
     const band = spec.band === 'all' ? 2 * (W + H) : spec.band === 'long' ? Math.max(W, H) : 0;
     out.parts.push({ qty: 1, desc: t.label, w: W, l: H, grain: spec.grain, mat, band, cut: true });
     out.label = `${f(W)}" x ${f(H)}" ${t.label}`;
