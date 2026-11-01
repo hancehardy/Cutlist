@@ -254,7 +254,7 @@ describe('accessory migration', () => {
   it('adds the Accessory panels once to a shop saved before version 3, and not again after', () => {
     const old = { version: 2, catalog: { categories: [{ key: 'base', label: 'Base', style: 'base' }], types: [{ code: 'B', cat: 'base', faces: [{ kind: 'door' }] }] } };
     const c = normalizeShopConfig(old);
-    expect(c.version).toBe(5);
+    expect(c.version).toBe(6);
     expect(c.catalog.categories.map(x => [x.key, x.style])).toEqual([['base', 'base'], ['accessory', 'panel']]);
     expect(c.catalog.types.map(t => t.code)).toEqual(['B', 'FIL', 'EP', 'TK']);
     // The admin removes them; a version-3 document stays as saved.
@@ -273,7 +273,7 @@ describe('toe kick material migration', () => {
       { code: 'FIL', cat: 'accessory', label: 'Filler', faces: [], panel: { mat: 'front', grain: 'Vertical', band: 'all' } },
     ];
     const c = normalizeShopConfig({ version: 3, catalog: { categories: cats, types } });
-    expect(c.version).toBe(5);
+    expect(c.version).toBe(6);
     expect(c.catalog.types.map(t => [t.code, t.panel?.mat])).toEqual([['TK', 'toe'], ['KICK', 'toe'], ['FIL', 'front']]);
     // A version-4 document is the admin's to decide: a toe kick deliberately cut from the front material stays.
     const kept = normalizeShopConfig({ version: 4, catalog: { categories: cats, types } });
@@ -350,7 +350,7 @@ describe('sink skirt migration', () => {
     const cats = [{ key: 'base', label: 'Base', style: 'base' }];
     const types = [{ code: 'SB', cat: 'base', faces: [{ kind: 'false' }, { kind: 'door' }] }, { code: 'VSB', cat: 'base', faces: [{ kind: 'door' }], case: { top: 'full' } }, { code: 'B', cat: 'base', faces: [{ kind: 'door' }] }];
     const c = normalizeShopConfig({ version: 4, catalog: { categories: cats, types } });
-    expect(c.version).toBe(5);
+    expect(c.version).toBe(6);
     expect(c.catalog.types[0].case).toEqual({ parts: sinkBaseParts() });
     expect(c.catalog.types[1].case!.parts.find(p => p.key === 'top')!.on).toBe(true);
     expect(c.catalog.types[2].case).toBeUndefined();
@@ -360,6 +360,12 @@ describe('sink skirt migration', () => {
     const v5 = normalizeShopConfig({ version: 5, catalog: { categories: cats, types: [{ code: 'SB', cat: 'base', faces: [{ kind: 'door' }], case: { top: 'none', extras: [{ name: 'Sink Skirt', qty: 1, w: 'smallFront', l: 'inW', grain: 'Vertical', mat: 'case', band: 'none' }] } }] } });
     const parts = v5.catalog.types[0].case!.parts;
     expect(parts.find(p => p.key === 'sinkSkirt')!.w).toBe('faceA + 3/4');
+    // Version 6: a stored parts list follows the vertical deck, top and shelves once; a version-6 document is kept as saved.
+    const flat = { parts: sinkBaseParts().map(p => (p.key === 'deck' || p.key === 'adjShelf' ? { ...p, grain: 'Horizontal' as const } : p)) };
+    const v6 = normalizeShopConfig({ version: 5, catalog: { categories: cats, types: [{ code: 'SB', cat: 'base', faces: [{ kind: 'door' }], case: flat }] } });
+    expect(v6.catalog.types[0].case).toEqual({ parts: sinkBaseParts() });
+    const kept = normalizeShopConfig({ version: 6, catalog: { categories: cats, types: [{ code: 'SB', cat: 'base', faces: [{ kind: 'door' }], case: flat }] } });
+    expect(kept.catalog.types[0].case!.parts.find(p => p.key === 'deck')!.grain).toBe('Horizontal');
     expect([parts.find(p => p.key === 'top')!.on, parts.find(p => p.key === 'topStretcher')!.on, parts.find(p => p.key === 'drawerStretcher')!.on]).toEqual([false, false, false]);
   });
 });

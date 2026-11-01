@@ -539,6 +539,11 @@ describe('case parts per box', () => {
   const edit = (style: 'base' | 'wall' | 'tall', fn: (p: CasePart) => Partial<CasePart> | null) =>
     defaultCaseParts(style).map(p => ({ ...p, ...(fn(p) ?? {}) }));
 
+  it('decks, tops and shelves run vertical grain by default, like the ends and stretchers', () => {
+    const grain = (desc: string) => build({ ...base, type: 'T', h: '84' }).parts.find(p => p.desc === desc)!.grain;
+    expect(['Deck', 'Top', 'Fixed Shelf', 'Adjustable Shelf', 'Unfinished Left End', 'Nailer'].map(grain)).toEqual(Array(6).fill('Vertical'));
+  });
+
   it('the default parts list builds exactly what the style built: same parts, same order', () => {
     expect(names(build(base).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Deck', '1 Nailer', '2 Top Stretcher', '1 Drawer Stretcher', '1 Adjustable Shelf']);
     expect(names(build({ ...base, type: '3DB', w: '15', h: '30', d: '21', toe: '0' }).parts)).toEqual(['1 Unfinished Left End', '1 Unfinished Right End', '1 Unfinished Back', '1 Deck', '1 Nailer', '2 Top Stretcher', '1 Drawer Stretcher']);
