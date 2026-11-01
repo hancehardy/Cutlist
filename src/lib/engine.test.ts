@@ -315,6 +315,7 @@ describe('cabinet catalog', () => {
     // A fixed face height is a plain dimension.
     expect(low.sections[0].h).toBe(8);
     expect(low.cat).toBe('low');
+    expect(low.catLabel).toBe('Lows');
   });
 
   it('warns about a box that is not in the catalog and builds it as the first box', () => {

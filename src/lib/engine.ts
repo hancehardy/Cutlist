@@ -265,7 +265,7 @@ export interface Section {
   spacerL: boolean; spacerR: boolean;
 }
 export interface BuiltCabinet {
-  idx: number; type: string; cat: string; code: string; label: string; W: number; H: number; D: number; toe: number;
+  idx: number; type: string; cat: string; catLabel: string; typeLabel: string; code: string; label: string; W: number; H: number; D: number; toe: number;
   parts: Part[]; fronts: Part[]; drawers: DrawerBox[]; hardware: HardwareItem[]; sections: Section[];
   warn: string; custom: boolean; bad: boolean; qty: number;
   /** An accessory: a single cut panel, no case, faces or hardware. */
@@ -283,7 +283,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   // A panel needs only a width and height; a case needs a depth too.
   const bad = panel ? [W, H].some(isNaN) || W <= 0 || H <= 0 : [W, H, D].some(isNaN) || W <= 0 || H <= 0 || D <= 0 || toe >= H;
   const out: BuiltCabinet = {
-    idx, type: c.type, cat: t.cat, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
+    idx, type: c.type, cat: t.cat, catLabel: categoryLabel(catalog, t.cat), typeLabel: t.label, code: cabCode(c, f), label: `${f(W)}" ${t.label}`, W, H, D, toe,
     parts: [], fronts: [], drawers: [], hardware: [], sections: [], warn: '', custom: !!c.layout, bad,
     qty: Math.max(1, parseInt(c.qty) || 1), boxH: 0, isWall: false, isTall: false, autoH: 0, avail: 0, panel,
   };

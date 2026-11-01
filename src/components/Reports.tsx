@@ -253,3 +253,34 @@ export function SheetSummaryReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
     </Card>
   );
 }
+
+/** Every line of the order, cabinets and accessories alike, with size, quantity, fronts and notes. */
+export function CabinetListReport({ r, f, headerTxt, footerTxt }: ReportCtx) {
+  const cabs = r.cabs;
+  const boxes = cabs.filter(c => !c.panel).length, panels = cabs.filter(c => c.panel).reduce((n, c) => n + c.qty, 0);
+  const frontsTxt = (c: typeof cabs[number]) => {
+    const n = (k: string) => c.fronts.filter(fr => fr.desc.startsWith(k)).reduce((a, fr) => a + fr.qty, 0);
+    const d = n('Door'), df = n('Drawer Front'), ff = n('False Front');
+    return [d && `${d} door${d === 1 ? '' : 's'}`, df && `${df} drawer front${df === 1 ? '' : 's'}`, ff && `${ff} false front${ff === 1 ? '' : 's'}`].filter(Boolean).join(', ') || '—';
+  };
+  const notes = (c: typeof cabs[number]) => [c.bad && 'size incomplete', c.custom && !c.panel && 'custom faces', c.warn].filter(Boolean).join(' · ');
+  return (
+    <Card title="Cabinet List" sub={headerTxt}>
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{boxes}</span> <span className="text-sm text-muted">cabinet{boxes === 1 ? '' : 's'}</span></div>
+        <div><span className="text-[28px] font-extrabold tracking-[-0.01em]">{panels}</span> <span className="text-sm text-muted">accessor{panels === 1 ? 'y' : 'ies'}</span></div>
+        <div className="text-[13px] text-muted">{cabs.length} line{cabs.length === 1 ? '' : 's'} in order</div>
+      </div>
+      <Table cols="36px 80px minmax(150px,1.6fr) minmax(130px,1.2fr) 44px minmax(120px,1.2fr) minmax(100px,1fr)"
+        heads={['#', 'Code', 'Type', 'Size (W x H x D)', 'Qty', 'Fronts', 'Notes']}
+        rows={cabs.map(c => ({ key: c.idx, cells: [
+          { v: c.idx, c: 'font-bold' }, { v: c.code, c: 'font-semibold' },
+          { v: `${c.catLabel} · ${c.typeLabel}` },
+          { v: c.bad ? '—' : c.panel ? `${f(c.W)} x ${f(c.H)}` : `${f(c.W)} x ${f(c.H)} x ${f(c.D)}${c.toe ? ` · toe ${f(c.toe)}` : ''}`, c: 'tabular-nums' },
+          { v: c.qty, c: 'tabular-nums' }, { v: c.panel ? 'panel' : frontsTxt(c), c: 'text-ink-3' }, { v: notes(c) || '', c: 'text-ink-3' },
+        ] }))} />
+      <div className="mt-2.5 text-xs text-muted">Sizes in inches. Accessories are single cut panels; their quantity multiplies the part.</div>
+      <Footer>{footerTxt}</Footer>
+    </Card>
+  );
+}

@@ -13,10 +13,10 @@ import { JobsMenu } from './JobsMenu';
 import { useAutosave } from './useAutosave';
 import { UserMenu, type Me } from './auth/UserMenu';
 import { PrintMenu } from './PrintMenu';
-import { AssemblySheets, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, SheetSummaryReport, type ReportCtx } from './Reports';
+import { AssemblySheets, CabinetListReport, CutListReport, DoorListReport, DrawerListReport, HardwareReport, OptimizeSheets, SheetSummaryReport, type ReportCtx } from './Reports';
 
-type Tab = 'config' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'sheets' | 'hardware';
-const TABS: [Tab, string][] = [['config', 'Configure'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['sheets', 'Sheets'], ['hardware', 'Hardware']];
+type Tab = 'config' | 'cabinets' | 'cut' | 'doors' | 'drawers' | 'assembly' | 'optimize' | 'sheets' | 'hardware';
+const TABS: [Tab, string][] = [['config', 'Configure'], ['cabinets', 'Cabinet list'], ['cut', 'Cut list'], ['doors', 'Doors'], ['drawers', 'Drawers'], ['assembly', 'Assembly'], ['optimize', 'Optimize'], ['sheets', 'Sheets'], ['hardware', 'Hardware']];
 /** Shop-floor reports only an admin sees. */
 const ADMIN_ONLY = new Set<Tab>(['cut', 'optimize']);
 
@@ -189,6 +189,7 @@ export function CutlistApp({ jobId, initialDoc, initialShop, user }: Props) {
             onSelect={select} onSelectSec={setSelSec}
             onLayout={(id, layout: SectionInput[] | null) => upd(id, { layout })} onSaveBox={saveBox} />
         )}
+        {show('cabinets') && <CabinetListReport {...ctx} />}
         {show('cut') && <CutListReport {...ctx} />}
         {show('doors') && <DoorListReport {...ctx} />}
         {show('drawers') && <DrawerListReport {...ctx} />}
