@@ -330,7 +330,7 @@ export function BoxesEditor({ cfg, update, skuImages }: { cfg: ShopConfig; updat
             <div className="mt-1.5 grid gap-x-4 gap-y-0.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}>
               {DIM_TOKENS.filter(([k]) => !/^face[B-P]$/.test(k)).map(([k, l]) => <div key={k}><code className="text-ink">{k}</code> {k === 'faceA' ? 'Height of face A (faceB, faceC… likewise)' : l}</div>)}
             </div>
-            <div className="mt-1.5">Add or subtract with spaces around the sign: <code className="text-ink">faceA + 3/4</code>, <code className="text-ink">inW - 1/2</code>. Fractions as typed: 3/4, 1-1/2, 1 1/2. Quantity: a number, <code className="text-ink">auto</code> (what the layout needs) or <code className="text-ink">auto+1</code>.</div>
+            <div className="mt-1.5">Add or subtract with spaces around the sign, multiply with *: <code className="text-ink">faceA + 3/4</code>, <code className="text-ink">inW - 1/2</code>, <code className="text-ink">boxH - 2*caseThk + 2*backGroove</code>. Fractions as typed: 3/4, 1-1/2, 1 1/2. Quantity: a number, <code className="text-ink">auto</code> (what the layout needs) or <code className="text-ink">auto+1</code>.</div>
           </details>
         </Card>
         <Card title="Standard faces" sub="What a new cabinet of this box starts with · the same window as a job's Configure tab">

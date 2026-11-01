@@ -69,7 +69,8 @@ const LETTERS = 'ABCDEFGHIJKLMNOP';
 
 /**
  * Named dimensions a case part can be sized from, besides a plain number. A size is one term, or terms joined with
- * ` + ` or ` - ` (spaces around the sign, so `1-1/2` stays a mixed number): `faceA + 3/4`, `inW - 1/2`.
+ * ` + ` or ` - ` (spaces around the sign, so `1-1/2` stays a mixed number); a term can be multiplied: `faceA + 3/4`,
+ * `inW - 1/2`, `inW + 2*backGroove`.
  */
 export const DIM_TOKENS: [string, string][] = [
   ['inW', 'Inside width'], ['inD', 'Inside depth, to the back'], ['D', 'Depth'], ['W', 'Width'], ['H', 'Height'], ['boxH', 'Box height, less the toe'],
@@ -77,14 +78,14 @@ export const DIM_TOKENS: [string, string][] = [
   ['caseThk', 'Case thickness'], ['backThk', 'Back thickness'], ['backGroove', 'Back groove depth'], ['shelfSetback', 'Shelf setback'], ['shelfClear', 'Shelf side clearance'],
   ...[...LETTERS].map((c): [string, string] => [`face${c}`, `Height of face ${c}`]),
 ];
-/** A case part's size as typed: 'auto' (the engine sizes it) or a DIM_TOKENS expression. NaN when a term is unknown. */
+/** A case part's size as typed: a DIM_TOKENS expression (terms with `*`, joined by ` + ` / ` - `). NaN when a term is unknown. */
 export function evalDim(expr: string, ctx: Record<string, number>): number {
   const terms = String(expr ?? '').trim().split(/\s+([+\-−])\s+/);
   if (!terms[0]) return NaN;
+  const factor = (t: string) => (Object.hasOwn(ctx, t) ? ctx[t] : parseDim(t));
   let total = 0, sign = 1;
   for (let i = 0; i < terms.length; i += 2) {
-    const t = terms[i].trim();
-    const v = Object.hasOwn(ctx, t) ? ctx[t] : parseDim(t);
+    const v = terms[i].split(/\s*[*×]\s*/).map(f => factor(f.trim())).reduce((a, b) => a * b, 1);
     if (isNaN(v)) return NaN;
     total += sign * v;
     sign = terms[i + 1] === '+' ? 1 : -1;
@@ -110,19 +111,20 @@ export const bandInches = (b: BandEdge, w: number, l: number) =>
 
 /**
  * One part of a box's case. `key` is a STANDARD_PARTS key (the engine knows its automatic count and size) or a custom
- * id; `qty` is 'auto', 'auto+N' or a number; `w` and `l` are 'auto' or a DIM_TOKENS expression. A part that is off,
+ * id; `qty` is 'auto', 'auto+N' or a number; `w` and `l` are DIM_TOKENS expressions ('auto' where the engine sizes the
+ * field: a partition's length). A part that is off,
  * or whose size can't be read, is not made.
  */
 export interface CasePart { key: string; name: string; on: boolean; qty: string; w: string; l: string; grain: Grain; mat: MatSlot; band: BandEdge }
 /** A box's whole case parts list, stored once the admin changes anything from the category default. */
 export interface CaseSpec { parts: CasePart[] }
-/** The parts a category style builds, in the order they are made. The back and partitions are sized by the engine. */
+/** The parts a category style builds, in the order they are made. Partitions are sized by the engine. */
 export const STANDARD_PARTS = ['leftEnd', 'rightEnd', 'back', 'deck', 'top', 'nailer', 'topStretcher', 'partition', 'drawerStretcher', 'fixedShelf', 'adjShelf'] as const;
 export type StandardPart = (typeof STANDARD_PARTS)[number];
 /** Parts whose count follows the layout when their qty is 'auto'. */
 export const AUTO_QTY_PARTS: StandardPart[] = ['partition', 'drawerStretcher', 'fixedShelf', 'adjShelf'];
-/** Fields the engine always sizes itself (shown read-only as 'auto'). */
-export const AUTO_SIZED: Partial<Record<string, { w?: true; l?: true; qty?: true }>> = { back: { w: true, l: true }, partition: { l: true, qty: true } };
+/** Fields the engine always sizes itself (shown read-only as 'auto'): a partition is as tall as its drawer section, one per split. */
+export const AUTO_SIZED: Partial<Record<string, { w?: true; l?: true; qty?: true }>> = { partition: { l: true, qty: true } };
 
 /** The case a category style builds: what `buildCabinet` made before boxes carried their own parts list. */
 export function defaultCaseParts(style: BuildStyle): CasePart[] {
@@ -132,7 +134,8 @@ export function defaultCaseParts(style: BuildStyle): CasePart[] {
   return [
     p('leftEnd', 'Unfinished Left End', '1', 'D', 'boxH', 'Vertical', 'l'),
     p('rightEnd', 'Unfinished Right End', '1', 'D', 'boxH', 'Vertical', 'l'),
-    p('back', 'Unfinished Back', '1', 'auto', 'auto', 'Vertical', 'none', true, 'back'),
+    // Captured in a groove on all four sides: the groove depth on each side, inside the ends and the deck and top.
+    p('back', 'Unfinished Back', '1', 'inW + 2*backGroove', 'boxH - 2*caseThk + 2*backGroove', 'Vertical', 'none', true, 'back'),
     p('deck', wall ? 'Bottom' : 'Deck', '1', 'D', 'inW', 'Horizontal', 'l'),
     p('top', 'Top', '1', 'D', 'inW', 'Horizontal', 'l', wall || tall),
     p('nailer', 'Nailer', wall ? '2' : '1', 'stretcherW', 'inW', 'Vertical', 'none'),
@@ -466,7 +469,7 @@ export function buildCabinet(c: CabInput, d: Resolved, idx: number, f: Fmt = n =
   // Edge banding: the front edge of ends, decks, tops, shelves and partitions, the long edge of stretchers.
   const ctx = caseDims(out, d);
   const autoQty: Record<string, number> = { drawerStretcher: drawerStretch, fixedShelf: fixedShelves, adjShelf: shelves };
-  const autoSize: Record<string, { w?: number; l?: number }> = { back: { w: inW + 2 * d.backGroove, l: boxH - 2 * thk + 2 * d.backGroove }, partition: { w: inD } };
+  const autoSize: Record<string, { w?: number; l?: number }> = { partition: { w: inD } };
   const matOf = (m: MatSlot) => (m === 'back' ? d.backMat : m === 'front' ? d.frontMat : m === 'toe' ? d.toeMat : d.caseMat);
   let adjShelves = 0;
   for (const part of t.case?.parts ?? defaultCaseParts(style)) {

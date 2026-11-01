@@ -285,7 +285,9 @@ describe('case parts validation', () => {
       .toEqual({ key: 'deck', name: 'Deck', on: false, qty: 'auto+1', w: 'D - 1/4', l: 'inW', grain: 'Vertical', mat: 'front', band: 'all' });
     // A second deck is a custom part; its key is made unique.
     expect(normCasePart({ key: 'deck', name: 'Deck 2', w: 'D', l: 'inW' }, 'base', taken)!.key).toBe('deck-2');
-    expect(normCasePart({ key: 'back', name: 'Back', w: 'inW', l: '30', qty: '2' }, 'base', taken)).toMatchObject({ w: 'auto', l: 'auto', qty: '2' });
+    expect(normCasePart({ key: 'back', name: 'Back', w: 'inW', l: '30', qty: '2' }, 'base', taken)).toMatchObject({ w: 'inW', l: '30', qty: '2' });
+    // A back saved as 'auto' (before its size was editable) gets the default expression.
+    expect(normCasePart({ key: 'back', w: 'auto', l: 'auto' }, 'base', new Set())).toMatchObject({ w: 'inW + 2*backGroove', l: 'boxH - 2*caseThk + 2*backGroove' });
     expect(normCasePart({ key: 'partition', qty: '4', w: 'inD', l: 'boxH' }, 'base', taken)).toMatchObject({ qty: 'auto', w: 'inD', l: 'auto' });
     expect(normCasePart({ name: 'Rail', qty: 'lots', w: 'auto', l: 'inW' }, 'base', taken)).toBeNull();
     expect(normCasePart({ name: 'Rail', qty: 'lots', w: 'faceC + 1', l: 'inW', grain: 'Horizontal', mat: 'toe', band: 'w' }, 'base', taken))

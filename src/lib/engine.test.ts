@@ -492,6 +492,9 @@ describe('case part sizes and counts', () => {
     expect(evalDim('faceA + 3/4', ctx)).toBe(6.9375);
     expect(evalDim('inW − 1', ctx)).toBe(27.5);
     expect(evalDim('inD - 1 + 1/4', ctx)).toBe(22.25);
+    expect(evalDim('inW + 2*3/8', ctx)).toBe(29.25);
+    expect(evalDim('2 * faceA', ctx)).toBe(12.375);
+    expect(evalDim('2*nope', ctx)).toBeNaN();
     // A mixed number keeps its dash; an unknown term or nothing at all is unreadable.
     expect(evalDim('1-1/2', ctx)).toBe(1.5);
     expect(evalDim('faceC + 1', ctx)).toBeNaN();
@@ -578,6 +581,14 @@ describe('case parts per box', () => {
     expect(cab.skipped).toEqual(['Skipped: can\'t read width "nonsense"']);
     // Custom parts come before the adjustable shelf, as the list orders them.
     expect(names(cab.parts).slice(-2)).toEqual(['1 Lip', '1 Adjustable Shelf']);
+  });
+
+  it('the back is sized by its expression, so a loose back can be made narrower', () => {
+    const dflt = defaultCaseParts('base').find(p => p.key === 'back')!;
+    expect([dflt.w, dflt.l]).toEqual(['inW + 2*backGroove', 'boxH - 2*caseThk + 2*backGroove']);
+    const loose = build({ ...base, type: 'X' }, withParts(edit('base', p => (p.key === 'back' ? { w: 'inW - 1/8', l: 'boxH - 1/8', mat: 'case', band: 'l' } : null))));
+    const back = loose.parts.find(p => p.desc === 'Unfinished Back')!;
+    expect([back.w, back.l, back.mat, back.band]).toEqual([28.375, 29.875, d.caseMat, 29.875]);
   });
 
   it('partitions follow the split drawer sections whatever the list says', () => {
